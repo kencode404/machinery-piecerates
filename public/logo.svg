@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Piece Rates">
+  <rect width="512" height="512" rx="112" fill="#2563eb"/>
+  <!-- road, drawn in perspective -->
+  <path d="M150 396 L214 132 H298 L362 396 Z" fill="#ffffff" opacity="0.96"/>
+  <!-- centre line dashes -->
+  <g fill="#2563eb">
+    <rect x="250" y="158" width="12" height="30" rx="5"/>
+    <rect x="248" y="214" width="16" height="36" rx="6"/>
+    <rect x="245" y="282" width="22" height="44" rx="7"/>
+    <rect x="241" y="338" width="30" height="50" rx="8"/>
+  </g>
+</svg>

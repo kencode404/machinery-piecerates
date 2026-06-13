@@ -1,0 +1,188 @@
+// Translate between the local (camelCase, nested GPS) shape and the server
+// (snake_case, flat columns) shape.
+import { SyncStatus, GpsSource } from '../db/models.js'
+
+const geo = (lat, lng, source) => ({
+  lat: lat ?? null,
+  lng: lng ?? null,
+  source: source || GpsSource.NONE,
+  accuracy: null
+})
+
+export function toServerTask(t) {
+  return {
+    id: t.id,
+    company_id: t.companyId ?? null,
+    company_name: t.companyName ?? null,
+    machine_id: t.machineId ?? null,
+    machine_name: t.machineName ?? null,
+    operator_id: t.operatorId ?? null,
+    operator_name: t.operatorName,
+    status: t.status,
+    created_by: t.createdBy,
+    start_mileage: t.startMileage,
+    start_time: t.startTime,
+    start_lat: t.startGps?.lat ?? null,
+    start_lng: t.startGps?.lng ?? null,
+    start_gps_source: t.startGps?.source ?? GpsSource.NONE,
+    start_photo_id: t.startPhotoId,
+    work_photo_id: t.workPhotoId,
+    end_mileage: t.endMileage,
+    end_time: t.endTime,
+    end_lat: t.endGps?.lat ?? null,
+    end_lng: t.endGps?.lng ?? null,
+    end_gps_source: t.endGps?.source ?? GpsSource.NONE,
+    end_photo_id: t.endPhotoId,
+    duration_minutes: t.durationMinutes,
+    piece_rate_id: t.pieceRateId,
+    piece_rate_name: t.pieceRateName,
+    unit: t.unit,
+    unit_price: t.unitPrice,
+    quantity: t.quantity,
+    amount: t.amount,
+    area_id: t.areaId,
+    area_name: t.areaName,
+    notes: t.notes || '',
+    day_key: t.dayKey,
+    month_key: t.monthKey,
+    created_at: t.createdAt,
+    updated_at: t.updatedAt
+  }
+}
+
+export function fromServerTask(r) {
+  return {
+    id: r.id,
+    companyId: r.company_id ?? null,
+    companyName: r.company_name ?? null,
+    machineId: r.machine_id ?? null,
+    machineName: r.machine_name ?? null,
+    operatorId: r.operator_id ?? null,
+    operatorName: r.operator_name,
+    status: r.status,
+    createdBy: r.created_by,
+    startMileage: r.start_mileage,
+    startTime: r.start_time,
+    startGps: geo(r.start_lat, r.start_lng, r.start_gps_source),
+    startPhotoId: r.start_photo_id,
+    workPhotoId: r.work_photo_id,
+    endMileage: r.end_mileage,
+    endTime: r.end_time,
+    endGps: geo(r.end_lat, r.end_lng, r.end_gps_source),
+    endPhotoId: r.end_photo_id,
+    durationMinutes: r.duration_minutes,
+    pieceRateId: r.piece_rate_id,
+    pieceRateName: r.piece_rate_name,
+    unit: r.unit,
+    unitPrice: r.unit_price,
+    quantity: r.quantity,
+    amount: r.amount,
+    areaId: r.area_id,
+    areaName: r.area_name,
+    notes: r.notes || '',
+    dayKey: r.day_key,
+    monthKey: r.month_key,
+    serverId: r.id,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+    syncStatus: SyncStatus.SYNCED
+  }
+}
+
+export function toServerPhoto(p, storagePath) {
+  return {
+    id: p.id,
+    task_id: p.taskId,
+    kind: p.kind,
+    storage_path: storagePath ?? p.storagePath ?? null,
+    captured_at: p.capturedAt,
+    lat: p.gps?.lat ?? null,
+    lng: p.gps?.lng ?? null,
+    gps_source: p.gps?.source ?? GpsSource.NONE,
+    updated_at: p.updatedAt
+  }
+}
+
+export function fromServerPhoto(r, existingBlob = null) {
+  return {
+    id: r.id,
+    taskId: r.task_id,
+    kind: r.kind,
+    blob: existingBlob, // server never sends bytes back; keep local blob if any
+    storagePath: r.storage_path,
+    capturedAt: r.captured_at,
+    gps: geo(r.lat, r.lng, r.gps_source),
+    syncStatus: SyncStatus.SYNCED,
+    updatedAt: r.updated_at
+  }
+}
+
+export function toServerCompany(c) {
+  return { id: c.id, name: c.name, active: c.active, updated_at: c.updatedAt }
+}
+export function fromServerCompany(r) {
+  return {
+    id: r.id,
+    name: r.name,
+    active: r.active,
+    updatedAt: r.updated_at,
+    syncStatus: SyncStatus.SYNCED
+  }
+}
+
+export function toServerMachine(m) {
+  return {
+    id: m.id,
+    company_id: m.companyId ?? null,
+    name: m.name,
+    pin_hash: m.pinHash ?? null,
+    active: m.active,
+    updated_at: m.updatedAt
+  }
+}
+export function fromServerMachine(r) {
+  return {
+    id: r.id,
+    companyId: r.company_id ?? null,
+    name: r.name,
+    pinHash: r.pin_hash ?? null,
+    active: r.active,
+    updatedAt: r.updated_at,
+    syncStatus: SyncStatus.SYNCED
+  }
+}
+
+export function toServerPieceRate(p) {
+  return {
+    id: p.id,
+    name: p.name,
+    unit: p.unit,
+    price: p.price,
+    active: p.active,
+    updated_at: p.updatedAt
+  }
+}
+export function fromServerPieceRate(r) {
+  return {
+    id: r.id,
+    name: r.name,
+    unit: r.unit,
+    price: r.price,
+    active: r.active,
+    updatedAt: r.updated_at,
+    syncStatus: SyncStatus.SYNCED
+  }
+}
+
+export function toServerArea(a) {
+  return { id: a.id, name: a.name, active: a.active, updated_at: a.updatedAt }
+}
+export function fromServerArea(r) {
+  return {
+    id: r.id,
+    name: r.name,
+    active: r.active,
+    updatedAt: r.updated_at,
+    syncStatus: SyncStatus.SYNCED
+  }
+}
