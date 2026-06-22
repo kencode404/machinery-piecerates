@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useAuth } from '../../auth/AuthContext.jsx'
-import { getMeta, setMeta } from '../../db/database.js'
-import { hashSecret } from '../../lib/crypto.js'
+import { getMeta } from '../../db/database.js'
 import { formatMoney } from '../../lib/format.js'
+import { isDistanceUnit } from '../../lib/dashboard.js'
 import {
   listPieceRates,
   upsertPieceRate,
@@ -12,129 +12,580 @@ import {
   upsertArea,
   deleteArea,
   listCompanies,
+  getCompany,
   upsertCompany,
   deleteCompany,
   listMachines,
+  getMachine,
   upsertMachine,
-  setMachinePin,
-  deleteMachine
+  deleteMachine,
+  listOperators,
+  upsertOperator,
+  setOperatorPin,
+  deleteOperator
 } from '../../db/repo.js'
-import { Button, Card, Field, TextInput, NumberInput, Select, Modal, Badge } from '../../components/ui.jsx'
+import PageHeader from '../../components/PageHeader.jsx'
+import { Button, Card, Field, TextInput, NumberInput, Select, Modal, Badge, Spinner } from '../../components/ui.jsx'
 import { IconPlus, IconTrash, IconChevron } from '../../components/icons.jsx'
 
+const CURRENCY = 'RM'
+
+// Quick-pick units for piece rates. "m" is the one the dashboard treats as
+// Road & Drain works; the rest each get their own speed chart. The field stays
+// free-text, so any other custom unit can still be typed.
+const UNIT_PRESETS = ['m', 'm²', 'ton', 'trip', 'pcs']
+const normUnit = (s) => String(s ?? '').trim().toLowerCase()
+const editorKey = (editing) => (editing === 'new' ? 'new' : editing?.id || 'closed')
+
+// Drill-down: Settings home -> Company -> Machine.
 export default function Settings() {
+  const [companyId, setCompanyId] = useState(null)
+  const [machineId, setMachineId] = useState(null)
+
+  if (companyId && machineId) {
+    return <MachineDetail companyId={companyId} machineId={machineId} onBack={() => setMachineId(null)} />
+  }
+  if (companyId) {
+    return <CompanyDetail companyId={companyId} onBack={() => setCompanyId(null)} onOpenMachine={setMachineId} />
+  }
   return (
-    <div className="space-y-4 pb-6">
-      <h1 className="text-lg font-bold text-slate-800">Settings</h1>
-      <GeneralSection />
-      <CompaniesSection />
-      <MachinesSection />
-      <PieceRatesSection />
-      <AreasSection />
-      <SecuritySection />
-      <AboutSection />
-    </div>
+    <SettingsHome
+      onOpenCompany={(id) => {
+        setCompanyId(id)
+        setMachineId(null)
+      }}
+    />
   )
 }
 
-function Section({ title, count, children, action }) {
-  const [open, setOpen] = useState(false)
+// ---------------------------------------------------------------------------
+// Reusable row
+// ---------------------------------------------------------------------------
+
+function ListRow({ onClick, title, subtitle, dim }) {
   return (
-    <Card className="overflow-hidden">
-      <button
-        className="flex w-full items-center justify-between px-4 py-3 active:bg-slate-50"
-        onClick={() => setOpen((v) => !v)}
-      >
-        <span className="font-semibold text-slate-800">
-          {title}
-          {count != null && <span className="ml-2 text-sm font-normal text-slate-400">{count}</span>}
-        </span>
-        <IconChevron width={18} height={18} className={`text-slate-300 transition-transform ${open ? 'rotate-90' : ''}`} />
-      </button>
-      {open && (
-        <div className="border-t border-slate-100 p-4">
-          {children}
-          {action && <div className="mt-3">{action}</div>}
-        </div>
+    <button
+      onClick={onClick}
+      className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2.5 text-left active:bg-slate-50"
+    >
+      <div className="min-w-0">
+        <p className={`truncate font-medium ${dim ? 'text-slate-400' : 'text-slate-800'}`}>{title}</p>
+        {subtitle && <p className="truncate text-xs text-slate-400">{subtitle}</p>}
+      </div>
+      <IconChevron width={16} height={16} className="shrink-0 text-slate-300" />
+    </button>
+  )
+}
+
+function SectionCard({ title, count, onAdd, addLabel, children }) {
+  return (
+    <Card className="p-4">
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="font-semibold text-slate-800">
+          {title} {count != null && <span className="text-sm font-normal text-slate-400">{count}</span>}
+        </h2>
+      </div>
+      <div className="space-y-2">{children}</div>
+      {onAdd && (
+        <Button variant="secondary" full className="mt-3" onClick={onAdd}>
+          <IconPlus width={18} height={18} /> {addLabel}
+        </Button>
       )}
     </Card>
   )
 }
 
-// Stable React key so each editor remounts (and re-initialises its fields)
-// whenever a different item — or "new" — is opened.
-const editorKey = (editing) => (editing === 'new' ? 'new' : editing?.id || 'closed')
+// ---------------------------------------------------------------------------
+// Level 0 — Settings home (Companies + Security + About)
+// ---------------------------------------------------------------------------
 
-// ---- General (currency) ---------------------------------------------------
+function SettingsHome({ onOpenCompany }) {
+  const companies = useLiveQuery(() => listCompanies({ includeInactive: true }), [], [])
+  const [editing, setEditing] = useState(null)
 
-function GeneralSection() {
-  const currency = useLiveQuery(() => getMeta('currency', 'RM'), [], 'RM')
-  const [value, setValue] = useState(null)
-  const v = value ?? currency ?? 'RM'
-  const [saved, setSaved] = useState(false)
+  return (
+    <div className="space-y-4 pb-6">
+      <h1 className="text-lg font-bold text-slate-800">Settings</h1>
 
-  async function save() {
-    await setMeta('currency', (v || 'RM').trim())
-    setSaved(true)
-    setTimeout(() => setSaved(false), 1500)
+      <SectionCard
+        title="Companies"
+        count={companies?.length}
+        onAdd={() => setEditing('new')}
+        addLabel="Add company"
+      >
+        {(companies || []).map((c) => (
+          <ListRow
+            key={c.id}
+            title={c.name}
+            subtitle="Operators, machines & areas"
+            dim={!c.active}
+            onClick={() => onOpenCompany(c.id)}
+          />
+        ))}
+        {companies && companies.length === 0 && (
+          <p className="text-sm text-slate-400">No companies yet. Add one to begin.</p>
+        )}
+      </SectionCard>
+
+      <SecuritySection />
+      <AboutSection />
+
+      <CompanyEditor key={editorKey(editing)} editing={editing} onClose={() => setEditing(null)} />
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Level 1 — a company (its Operators, Machines, Areas)
+// ---------------------------------------------------------------------------
+
+function CompanyDetail({ companyId, onBack, onOpenMachine }) {
+  const company = useLiveQuery(async () => (await getCompany(companyId)) ?? null, [companyId])
+  const machines = useLiveQuery(() => listMachines({ companyId, includeInactive: true }), [companyId], [])
+  const operatorsAll = useLiveQuery(() => listOperators({ includeInactive: true }), [], [])
+  const areas = useLiveQuery(() => listAreas({ companyId, includeInactive: true }), [companyId], [])
+  const operators = (operatorsAll || []).filter((o) => o.companyId === companyId)
+
+  const [editCompany, setEditCompany] = useState(false)
+  const [machineEditing, setMachineEditing] = useState(null)
+  const [operatorEditing, setOperatorEditing] = useState(null)
+  const [areaEditing, setAreaEditing] = useState(null)
+
+  if (company === undefined) {
+    return (
+      <div className="flex justify-center py-20 text-brand">
+        <Spinner className="h-7 w-7" />
+      </div>
+    )
+  }
+  if (company === null) {
+    onBack()
+    return null
   }
 
   return (
-    <Section title="General">
-      <Field label="Currency symbol / prefix" hint="Shown before every amount, e.g. RM, $, ₱">
-        <TextInput value={v} onChange={(e) => setValue(e.target.value)} maxLength={6} />
-      </Field>
-      <Button className="mt-3" onClick={save}>
-        {saved ? 'Saved ✓' : 'Save'}
-      </Button>
-    </Section>
+    <div className="space-y-4 pb-6">
+      <PageHeader
+        title={company.name}
+        subtitle="Company settings"
+        onBack={onBack}
+        right={
+          <Button size="sm" variant="ghost" onClick={() => setEditCompany(true)}>
+            Edit
+          </Button>
+        }
+      />
+
+      <SectionCard
+        title="Operators"
+        count={operators.length}
+        onAdd={() => setOperatorEditing('new')}
+        addLabel="Add operator"
+      >
+        {operators.map((o) => {
+          const n = o.machineIds?.length || 0
+          return (
+            <ListRow
+              key={o.id}
+              title={o.name}
+              dim={!o.active}
+              subtitle={`${o.isSiteAdmin ? 'Site admin · ' : ''}${o.pinHash ? 'PIN set' : 'no PIN'} · ${n} machine${n === 1 ? '' : 's'}${o.active ? '' : ' · inactive'}`}
+              onClick={() => setOperatorEditing(o)}
+            />
+          )
+        })}
+        {operators.length === 0 && <p className="text-sm text-slate-400">No operators in this company.</p>}
+      </SectionCard>
+
+      <SectionCard
+        title="Machines"
+        count={machines?.length}
+        onAdd={() => setMachineEditing('new')}
+        addLabel="Add machine"
+      >
+        {(machines || []).map((m) => (
+          <ListRow
+            key={m.id}
+            title={m.name}
+            dim={!m.active}
+            subtitle={`Tap to set piece rates${m.active ? '' : ' · inactive'}`}
+            onClick={() => onOpenMachine(m.id)}
+          />
+        ))}
+        {machines && machines.length === 0 && (
+          <p className="text-sm text-slate-400">No machines in this company.</p>
+        )}
+      </SectionCard>
+
+      <SectionCard
+        title="Areas"
+        count={areas?.length}
+        onAdd={() => setAreaEditing('new')}
+        addLabel="Add area"
+      >
+        {(areas || []).map((a) => (
+          <ListRow key={a.id} title={a.name} dim={!a.active} onClick={() => setAreaEditing(a)} />
+        ))}
+        {areas && areas.length === 0 && <p className="text-sm text-slate-400">No areas in this company.</p>}
+      </SectionCard>
+
+      <CompanyEditor
+        key={editCompany ? 'edit' : 'closed'}
+        editing={editCompany ? company : null}
+        onClose={() => setEditCompany(false)}
+        onDeleted={onBack}
+      />
+      <MachineEditor
+        key={editorKey(machineEditing)}
+        editing={machineEditing}
+        companyId={companyId}
+        onClose={() => setMachineEditing(null)}
+      />
+      <OperatorEditor
+        key={editorKey(operatorEditing)}
+        editing={operatorEditing}
+        companyId={companyId}
+        machines={machines || []}
+        onClose={() => setOperatorEditing(null)}
+      />
+      <AreaEditor
+        key={editorKey(areaEditing)}
+        editing={areaEditing}
+        companyId={companyId}
+        onClose={() => setAreaEditing(null)}
+      />
+    </div>
   )
 }
 
-// ---- Piece rates ----------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Level 2 — a machine (its piece rates)
+// ---------------------------------------------------------------------------
 
-function PieceRatesSection() {
-  const rates = useLiveQuery(() => listPieceRates({ includeInactive: true }), [], [])
-  const currency = useLiveQuery(() => getMeta('currency', 'RM'), [], 'RM')
-  const [editing, setEditing] = useState(null) // item | 'new' | null
+function MachineDetail({ companyId, machineId, onBack }) {
+  const machine = useLiveQuery(async () => (await getMachine(machineId)) ?? null, [machineId])
+  const rates = useLiveQuery(() => listPieceRates({ machineId, includeInactive: true }), [machineId], [])
+  const [editMachine, setEditMachine] = useState(false)
+  const [rateEditing, setRateEditing] = useState(null)
+
+  if (machine === undefined) {
+    return (
+      <div className="flex justify-center py-20 text-brand">
+        <Spinner className="h-7 w-7" />
+      </div>
+    )
+  }
+  if (machine === null) {
+    onBack()
+    return null
+  }
 
   return (
-    <Section
-      title="Piece rates"
-      count={rates?.length}
-      action={
-        <Button variant="secondary" full onClick={() => setEditing('new')}>
-          <IconPlus width={18} height={18} /> Add piece rate
-        </Button>
-      }
-    >
-      <div className="space-y-2">
+    <div className="space-y-4 pb-6">
+      <PageHeader
+        title={machine.name}
+        subtitle="Machine · piece rates"
+        onBack={onBack}
+        right={
+          <Button size="sm" variant="ghost" onClick={() => setEditMachine(true)}>
+            Edit
+          </Button>
+        }
+      />
+
+      <SectionCard
+        title="Piece rates"
+        count={rates?.length}
+        onAdd={() => setRateEditing('new')}
+        addLabel="Add piece rate"
+      >
         {(rates || []).map((r) => (
-          <button
+          <ListRow
             key={r.id}
-            onClick={() => setEditing(r)}
-            className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2.5 text-left active:bg-slate-50"
-          >
-            <div>
-              <p className="font-medium text-slate-800">
-                {r.name} {!r.active && <Badge color="slate">hidden</Badge>}
-              </p>
-              <p className="text-xs text-slate-400">
-                {formatMoney(r.price, currency)} / {r.unit}
-              </p>
-            </div>
-            <IconChevron width={16} height={16} className="text-slate-300" />
-          </button>
+            title={r.name}
+            dim={!r.active}
+            subtitle={`${formatMoney(r.price, CURRENCY)} / ${r.unit}${r.active ? '' : ' · hidden'}`}
+            onClick={() => setRateEditing(r)}
+          />
         ))}
         {rates && rates.length === 0 && <p className="text-sm text-slate-400">No piece rates yet.</p>}
-      </div>
+      </SectionCard>
 
-      <RateEditor key={editorKey(editing)} editing={editing} onClose={() => setEditing(null)} />
-    </Section>
+      <MachineEditor
+        key={editMachine ? 'edit' : 'closed'}
+        editing={editMachine ? machine : null}
+        companyId={companyId}
+        onClose={() => setEditMachine(false)}
+        onDeleted={onBack}
+      />
+      <RateEditor
+        key={editorKey(rateEditing)}
+        editing={rateEditing}
+        machineId={machineId}
+        onClose={() => setRateEditing(null)}
+      />
+    </div>
   )
 }
 
-function RateEditor({ editing, onClose }) {
+// ---------------------------------------------------------------------------
+// Editors
+// ---------------------------------------------------------------------------
+
+function CompanyEditor({ editing, onClose, onDeleted }) {
+  const isNew = editing === 'new'
+  const item = isNew ? null : editing
+  const open = editing != null
+  const [name, setName] = useState(item?.name || '')
+  const [active, setActive] = useState(item?.active !== false)
+  const [error, setError] = useState('')
+
+  async function save() {
+    if (!name.trim()) return setError('Enter a company name.')
+    await upsertCompany({ id: item?.id, name, active })
+    onClose()
+  }
+  async function remove() {
+    if (!confirm(`Delete company "${item.name}"? Its machines, operators and areas stay in the system.`)) return
+    await deleteCompany(item.id)
+    onClose()
+    onDeleted?.()
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title={isNew ? 'New company' : 'Edit company'}>
+      <div className="space-y-3">
+        <Field label="Company name" required error={error}>
+          <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. ABC Construction" autoFocus />
+        </Field>
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
+          Active
+        </label>
+        <Button full onClick={save}>
+          Save
+        </Button>
+        {!isNew && (
+          <Button full variant="danger" onClick={remove}>
+            <IconTrash width={16} height={16} /> Delete
+          </Button>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
+function MachineEditor({ editing, companyId, onClose, onDeleted }) {
+  const isNew = editing === 'new'
+  const item = isNew ? null : editing
+  const open = editing != null
+  const [name, setName] = useState(item?.name || '')
+  const [active, setActive] = useState(item?.active !== false)
+  const [error, setError] = useState('')
+
+  async function save() {
+    if (!name.trim()) return setError('Enter a machine name.')
+    await upsertMachine({ id: item?.id, companyId, name, active })
+    onClose()
+  }
+  async function remove() {
+    if (!confirm(`Delete machine "${item.name}"? Its records stay in the system.`)) return
+    await deleteMachine(item.id)
+    onClose()
+    onDeleted?.()
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title={isNew ? 'New machine' : 'Edit machine'}>
+      <div className="space-y-3">
+        <Field label="Machine name" required error={error}>
+          <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Excavator EX-01" autoFocus />
+        </Field>
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
+          Active
+        </label>
+        <Button full onClick={save}>
+          Save
+        </Button>
+        {!isNew && (
+          <Button full variant="danger" onClick={remove}>
+            <IconTrash width={16} height={16} /> Delete
+          </Button>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
+function OperatorEditor({ editing, companyId, machines, onClose }) {
+  const isNew = editing === 'new'
+  const item = isNew ? null : editing
+  const open = editing != null
+  const [name, setName] = useState(item?.name || '')
+  const [active, setActive] = useState(item?.active !== false)
+  const [pin, setPin] = useState(item?.pin || '')
+  const [showPin, setShowPin] = useState(false)
+  const [machineIds, setMachineIds] = useState(item?.machineIds || [])
+  const [isSiteAdmin, setIsSiteAdmin] = useState(item?.isSiteAdmin === true)
+  const [basicSalary, setBasicSalary] = useState(item?.basicSalary ?? '')
+  const [phoneAllowance, setPhoneAllowance] = useState(item?.phoneAllowance ?? '')
+  const [hourlyRate, setHourlyRate] = useState(item?.hourlyRate ?? '')
+  const [forceLogout, setForceLogout] = useState(false)
+  const [error, setError] = useState('')
+
+  const toggleMachine = (id) =>
+    setMachineIds((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
+
+  async function save() {
+    if (!name.trim()) return setError('Enter a username.')
+    if (pin && pin.length < 4) return setError('PIN must be at least 4 digits.')
+    if (isNew && !pin) return setError('Set a PIN so the operator can log in.')
+    try {
+      const validIds = machineIds.filter((id) => machines.some((m) => m.id === id))
+      const saved = await upsertOperator({
+        id: item?.id,
+        name,
+        companyId,
+        active,
+        isSiteAdmin,
+        basicSalary: basicSalary === '' ? null : basicSalary,
+        phoneAllowance: phoneAllowance === '' ? null : phoneAllowance,
+        hourlyRate: hourlyRate === '' ? null : hourlyRate,
+        machineIds: validIds,
+        forceLogout
+      })
+      if (pin) await setOperatorPin(saved.id, pin)
+      onClose()
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+  async function remove() {
+    if (!confirm(`Delete operator "${item.name}"? Their records stay in the system.`)) return
+    await deleteOperator(item.id)
+    onClose()
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title={isNew ? 'New operator' : 'Edit operator'}>
+      <div className="space-y-3">
+        <Field label="Username" required hint="Typed at login (not case-sensitive)" error={error}>
+          <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. ahmad" autoFocus autoCapitalize="none" />
+        </Field>
+        <label className="flex items-center gap-2 rounded-lg bg-brand-light px-2 py-2 text-sm text-brand-dark">
+          <input type="checkbox" checked={isSiteAdmin} onChange={(e) => setIsSiteAdmin(e.target.checked)} />
+          Site admin — can add &amp; edit this company&apos;s tasks
+        </label>
+        <Field label="PIN" required={isNew} hint="Operators type this to log in">
+          <div className="relative">
+            <TextInput
+              type={showPin ? 'text' : 'password'}
+              inputMode="numeric"
+              value={pin}
+              onChange={(e) => setPin(e.target.value)}
+              placeholder="••••"
+              className="pr-16"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPin((v) => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-brand"
+            >
+              {showPin ? 'Hide' : 'Show'}
+            </button>
+          </div>
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Basic salary" hint="Gaji Bulanan in claim form">
+            <NumberInput value={basicSalary} onChange={(e) => setBasicSalary(e.target.value)} placeholder="0.00" />
+          </Field>
+          <Field label="Phone allowance" hint="Elaun telephone in claim form">
+            <NumberInput value={phoneAllowance} onChange={(e) => setPhoneAllowance(e.target.value)} placeholder="0.00" />
+          </Field>
+        </div>
+        <Field label="Kerja jam" hint="Hourly rate (RM/jam) — selectable as a piece rate + drives the dashboard comparison">
+          <NumberInput value={hourlyRate} onChange={(e) => setHourlyRate(e.target.value)} placeholder="0.00" />
+        </Field>
+        <div>
+          <p className="mb-1 text-sm font-medium text-slate-700">Machines this operator can use</p>
+          <div className="max-h-48 space-y-1 overflow-auto rounded-lg border border-slate-200 p-2">
+            {machines.map((m) => (
+              <label key={m.id} className="flex items-center gap-2 text-sm text-slate-700">
+                <input type="checkbox" checked={machineIds.includes(m.id)} onChange={() => toggleMachine(m.id)} />
+                {m.name}
+                {m.active ? '' : ' (inactive)'}
+              </label>
+            ))}
+            {machines.length === 0 && <p className="text-xs text-slate-400">Add machines to this company first.</p>}
+          </div>
+        </div>
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
+          Active (can log in)
+        </label>
+        {!isNew && (
+          <label className="flex items-center gap-2 rounded-lg bg-amber-50 px-2 py-2 text-sm text-amber-800">
+            <input type="checkbox" checked={forceLogout} onChange={(e) => setForceLogout(e.target.checked)} />
+            Sign out of all devices (require re-login)
+          </label>
+        )}
+        <Button full onClick={save}>
+          Save
+        </Button>
+        {!isNew && (
+          <Button full variant="danger" onClick={remove}>
+            <IconTrash width={16} height={16} /> Delete
+          </Button>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
+function AreaEditor({ editing, companyId, onClose }) {
+  const isNew = editing === 'new'
+  const item = isNew ? null : editing
+  const open = editing != null
+  const [name, setName] = useState(item?.name || '')
+  const [active, setActive] = useState(item?.active !== false)
+  const [error, setError] = useState('')
+
+  async function save() {
+    if (!name.trim()) return setError('Enter an area name.')
+    await upsertArea({ id: item?.id, companyId, name, active })
+    onClose()
+  }
+  async function remove() {
+    if (!confirm(`Delete area "${item.name}"?`)) return
+    await deleteArea(item.id)
+    onClose()
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title={isNew ? 'New area' : 'Edit area'}>
+      <div className="space-y-3">
+        <Field label="Area name" required error={error}>
+          <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Zone A" autoFocus />
+        </Field>
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
+          Show this area to operators
+        </label>
+        <Button full onClick={save}>
+          Save
+        </Button>
+        {!isNew && (
+          <Button full variant="danger" onClick={remove}>
+            <IconTrash width={16} height={16} /> Delete
+          </Button>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
+function RateEditor({ editing, machineId, onClose }) {
   const isNew = editing === 'new'
   const item = isNew ? null : editing
   const open = editing != null
@@ -142,10 +593,11 @@ function RateEditor({ editing, onClose }) {
   const [unit, setUnit] = useState(item?.unit || '')
   const [price, setPrice] = useState(item?.price ?? '')
   const [active, setActive] = useState(item?.active !== false)
+  const [error, setError] = useState('')
 
   async function save() {
-    if (!name.trim() || !unit.trim()) return
-    await upsertPieceRate({ id: item?.id, name, unit, price, active })
+    if (!name.trim() || !unit.trim()) return setError('Enter a work name and unit.')
+    await upsertPieceRate({ id: item?.id, machineId: item?.machineId ?? machineId, name, unit, price, active })
     onClose()
   }
   async function remove() {
@@ -157,13 +609,42 @@ function RateEditor({ editing, onClose }) {
   return (
     <Modal open={open} onClose={onClose} title={isNew ? 'New piece rate' : 'Edit piece rate'}>
       <div className="space-y-3">
-        <Field label="Work name" required>
+        <Field label="Work name" required error={error}>
           <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Repair road" autoFocus />
         </Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Unit" required hint="m, m², ton, trip…">
-            <TextInput value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="m" />
-          </Field>
+          <div>
+            <Field label="Unit" required>
+              <TextInput value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="m" />
+            </Field>
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {UNIT_PRESETS.map((u) => {
+                const on = normUnit(unit) === u
+                return (
+                  <button
+                    key={u}
+                    type="button"
+                    onClick={() => setUnit(u)}
+                    className={
+                      'rounded-full border px-2 py-0.5 text-xs ' +
+                      (on
+                        ? 'border-brand bg-brand/10 font-semibold text-brand'
+                        : 'border-slate-200 text-slate-500 active:bg-slate-100')
+                    }
+                  >
+                    {u}
+                  </button>
+                )
+              })}
+            </div>
+            {normUnit(unit) && (
+              <p className="mt-1 text-[11px] text-slate-400">
+                {isDistanceUnit(unit)
+                  ? '→ groups into “Road & Drain works” (m/jam)'
+                  : `→ its own speed chart (${normUnit(unit)}/jam)`}
+              </p>
+            )}
+          </div>
           <Field label="Price per unit" required>
             <NumberInput value={price} onChange={(e) => setPrice(e.target.value)} placeholder="25" />
           </Field>
@@ -185,281 +666,9 @@ function RateEditor({ editing, onClose }) {
   )
 }
 
-// ---- Areas ----------------------------------------------------------------
-
-function AreasSection() {
-  const areas = useLiveQuery(() => listAreas({ includeInactive: true }), [], [])
-  const [editing, setEditing] = useState(null)
-
-  return (
-    <Section
-      title="Areas"
-      count={areas?.length}
-      action={
-        <Button variant="secondary" full onClick={() => setEditing('new')}>
-          <IconPlus width={18} height={18} /> Add area
-        </Button>
-      }
-    >
-      <div className="space-y-2">
-        {(areas || []).map((a) => (
-          <button
-            key={a.id}
-            onClick={() => setEditing(a)}
-            className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2.5 text-left active:bg-slate-50"
-          >
-            <p className="font-medium text-slate-800">
-              {a.name} {!a.active && <Badge color="slate">hidden</Badge>}
-            </p>
-            <IconChevron width={16} height={16} className="text-slate-300" />
-          </button>
-        ))}
-        {areas && areas.length === 0 && <p className="text-sm text-slate-400">No areas yet.</p>}
-      </div>
-      <AreaEditor key={editorKey(editing)} editing={editing} onClose={() => setEditing(null)} />
-    </Section>
-  )
-}
-
-function AreaEditor({ editing, onClose }) {
-  const isNew = editing === 'new'
-  const item = isNew ? null : editing
-  const open = editing != null
-  const [name, setName] = useState(item?.name || '')
-  const [active, setActive] = useState(item?.active !== false)
-
-  async function save() {
-    if (!name.trim()) return
-    await upsertArea({ id: item?.id, name, active })
-    onClose()
-  }
-  async function remove() {
-    if (!confirm(`Delete area "${item.name}"?`)) return
-    await deleteArea(item.id)
-    onClose()
-  }
-
-  return (
-    <Modal open={open} onClose={onClose} title={isNew ? 'New area' : 'Edit area'}>
-      <div className="space-y-3">
-        <Field label="Area name" required>
-          <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Zone A" autoFocus />
-        </Field>
-        <label className="flex items-center gap-2 text-sm text-slate-600">
-          <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
-          Show this area to operators
-        </label>
-        <Button full onClick={save}>
-          Save
-        </Button>
-        {!isNew && (
-          <Button full variant="danger" onClick={remove}>
-            <IconTrash width={16} height={16} /> Delete
-          </Button>
-        )}
-      </div>
-    </Modal>
-  )
-}
-
-// ---- Companies ------------------------------------------------------------
-
-function CompaniesSection() {
-  const companies = useLiveQuery(() => listCompanies({ includeInactive: true }), [], [])
-  const [editing, setEditing] = useState(null)
-
-  return (
-    <Section
-      title="Companies"
-      count={companies?.length}
-      action={
-        <Button variant="secondary" full onClick={() => setEditing('new')}>
-          <IconPlus width={18} height={18} /> Add company
-        </Button>
-      }
-    >
-      <div className="space-y-2">
-        {(companies || []).map((c) => (
-          <button
-            key={c.id}
-            onClick={() => setEditing(c)}
-            className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2.5 text-left active:bg-slate-50"
-          >
-            <p className="font-medium text-slate-800">
-              {c.name} {!c.active && <Badge color="slate">inactive</Badge>}
-            </p>
-            <IconChevron width={16} height={16} className="text-slate-300" />
-          </button>
-        ))}
-        {companies && companies.length === 0 && <p className="text-sm text-slate-400">No companies yet.</p>}
-      </div>
-      <CompanyEditor key={editorKey(editing)} editing={editing} onClose={() => setEditing(null)} />
-    </Section>
-  )
-}
-
-function CompanyEditor({ editing, onClose }) {
-  const isNew = editing === 'new'
-  const item = isNew ? null : editing
-  const open = editing != null
-  const [name, setName] = useState(item?.name || '')
-  const [active, setActive] = useState(item?.active !== false)
-
-  async function save() {
-    if (!name.trim()) return
-    await upsertCompany({ id: item?.id, name, active })
-    onClose()
-  }
-  async function remove() {
-    if (!confirm(`Delete company "${item.name}"? Its machines and records stay in the system.`)) return
-    await deleteCompany(item.id)
-    onClose()
-  }
-
-  return (
-    <Modal open={open} onClose={onClose} title={isNew ? 'New company' : 'Edit company'}>
-      <div className="space-y-3">
-        <Field label="Company name" required>
-          <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. ABC Construction" autoFocus />
-        </Field>
-        <label className="flex items-center gap-2 text-sm text-slate-600">
-          <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
-          Active (operators can log in to it)
-        </label>
-        <Button full onClick={save}>
-          Save
-        </Button>
-        {!isNew && (
-          <Button full variant="danger" onClick={remove}>
-            <IconTrash width={16} height={16} /> Delete
-          </Button>
-        )}
-      </div>
-    </Modal>
-  )
-}
-
-// ---- Machines (each has its own login PIN) --------------------------------
-
-function MachinesSection() {
-  const machines = useLiveQuery(() => listMachines({ includeInactive: true }), [], [])
-  const companies = useLiveQuery(() => listCompanies({ includeInactive: true }), [], [])
-  const [editing, setEditing] = useState(null)
-  const companyName = (id) => (companies || []).find((c) => c.id === id)?.name || 'No company'
-
-  return (
-    <Section
-      title="Machines"
-      count={machines?.length}
-      action={
-        <Button variant="secondary" full onClick={() => setEditing('new')}>
-          <IconPlus width={18} height={18} /> Add machine
-        </Button>
-      }
-    >
-      <div className="space-y-2">
-        {(machines || []).map((m) => (
-          <button
-            key={m.id}
-            onClick={() => setEditing(m)}
-            className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2.5 text-left active:bg-slate-50"
-          >
-            <div>
-              <p className="font-medium text-slate-800">
-                {m.name} {!m.active && <Badge color="slate">inactive</Badge>}
-              </p>
-              <p className="text-xs text-slate-400">
-                {companyName(m.companyId)} · {m.pinHash ? 'PIN set' : 'No PIN — cannot log in'}
-              </p>
-            </div>
-            <IconChevron width={16} height={16} className="text-slate-300" />
-          </button>
-        ))}
-        {machines && machines.length === 0 && <p className="text-sm text-slate-400">No machines yet.</p>}
-      </div>
-      <MachineEditor
-        key={editorKey(editing)}
-        editing={editing}
-        companies={companies || []}
-        onClose={() => setEditing(null)}
-      />
-    </Section>
-  )
-}
-
-function MachineEditor({ editing, companies, onClose }) {
-  const isNew = editing === 'new'
-  const item = isNew ? null : editing
-  const open = editing != null
-  const [name, setName] = useState(item?.name || '')
-  const [companyId, setCompanyId] = useState(item?.companyId || '')
-  const [active, setActive] = useState(item?.active !== false)
-  const [pin, setPin] = useState('')
-  const [error, setError] = useState('')
-
-  async function save() {
-    if (!companyId) return setError('Choose a company.')
-    if (!name.trim()) return setError('Enter a machine name.')
-    if (pin && pin.length < 4) return setError('PIN must be at least 4 digits.')
-    if (isNew && !pin) return setError('Set a PIN so operators can log in to this machine.')
-    const saved = await upsertMachine({ id: item?.id, companyId, name, active })
-    if (pin) await setMachinePin(saved.id, await hashSecret(pin))
-    onClose()
-  }
-  async function remove() {
-    if (!confirm(`Delete machine "${item.name}"? Its records stay in the system.`)) return
-    await deleteMachine(item.id)
-    onClose()
-  }
-
-  return (
-    <Modal open={open} onClose={onClose} title={isNew ? 'New machine' : 'Edit machine'}>
-      <div className="space-y-3">
-        <Field label="Company" required>
-          <Select value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
-            <option value="">Choose…</option>
-            {companies.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Machine name" required>
-          <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Excavator EX-01" />
-        </Field>
-        <Field
-          label={isNew ? 'Login PIN' : 'Reset PIN'}
-          required={isNew}
-          hint={isNew ? '4+ digits operators type to log in to this machine' : 'Leave blank to keep the current PIN'}
-          error={error}
-        >
-          <TextInput
-            type="password"
-            inputMode="numeric"
-            value={pin}
-            onChange={(e) => setPin(e.target.value)}
-            placeholder="••••"
-          />
-        </Field>
-        <label className="flex items-center gap-2 text-sm text-slate-600">
-          <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
-          Active (shown at login)
-        </label>
-        <Button full onClick={save}>
-          Save
-        </Button>
-        {!isNew && (
-          <Button full variant="danger" onClick={remove}>
-            <IconTrash width={16} height={16} /> Delete
-          </Button>
-        )}
-      </div>
-    </Modal>
-  )
-}
-
-// ---- Security -------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Security + About
+// ---------------------------------------------------------------------------
 
 function SecuritySection() {
   const { changeAdminPassword, regenerateRecovery } = useAuth()
@@ -469,6 +678,7 @@ function SecuritySection() {
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
   const [newCode, setNewCode] = useState('')
+  const [open, setOpen] = useState(false)
 
   async function change() {
     setErr('')
@@ -485,39 +695,42 @@ function SecuritySection() {
       setErr(e.message)
     }
   }
-
   async function regen() {
     if (!confirm('Generate a new recovery code? The old code will stop working.')) return
-    const code = await regenerateRecovery()
-    setNewCode(code)
+    setNewCode(await regenerateRecovery())
   }
 
   return (
-    <Section title="Security">
-      <div className="space-y-3">
-        <p className="text-sm font-medium text-slate-600">Change admin password</p>
-        <Field label="Current password">
-          <TextInput type="password" value={old} onChange={(e) => setOld(e.target.value)} />
-        </Field>
-        <Field label="New password">
-          <TextInput type="password" value={pw} onChange={(e) => setPw(e.target.value)} />
-        </Field>
-        <Field label="Confirm new password" error={err}>
-          <TextInput type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} />
-        </Field>
-        {msg && <p className="text-sm text-green-600">{msg}</p>}
-        <Button onClick={change}>Change password</Button>
+    <Card className="overflow-hidden">
+      <button className="flex w-full items-center justify-between px-4 py-3 active:bg-slate-50" onClick={() => setOpen((v) => !v)}>
+        <span className="font-semibold text-slate-800">Admin security</span>
+        <IconChevron width={18} height={18} className={`text-slate-300 transition-transform ${open ? 'rotate-90' : ''}`} />
+      </button>
+      {open && (
+        <div className="space-y-3 border-t border-slate-100 p-4">
+          <p className="text-sm font-medium text-slate-600">Change admin password</p>
+          <Field label="Current password">
+            <TextInput type="password" value={old} onChange={(e) => setOld(e.target.value)} />
+          </Field>
+          <Field label="New password">
+            <TextInput type="password" value={pw} onChange={(e) => setPw(e.target.value)} />
+          </Field>
+          <Field label="Confirm new password" error={err}>
+            <TextInput type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} />
+          </Field>
+          {msg && <p className="text-sm text-green-600">{msg}</p>}
+          <Button onClick={change}>Change password</Button>
 
-        <hr className="my-2 border-slate-100" />
-        <p className="text-sm font-medium text-slate-600">Recovery code</p>
-        <p className="text-xs text-slate-400">
-          Used to reset the admin password if it is forgotten. The current code can&apos;t be shown
-          again — generate a new one if you&apos;ve lost it.
-        </p>
-        <Button variant="secondary" onClick={regen}>
-          Generate new recovery code
-        </Button>
-      </div>
+          <hr className="my-2 border-slate-100" />
+          <p className="text-sm font-medium text-slate-600">Recovery code</p>
+          <p className="text-xs text-slate-400">
+            Used to reset the admin password if forgotten. The current code can&apos;t be shown again — generate a new one if lost.
+          </p>
+          <Button variant="secondary" onClick={regen}>
+            Generate new recovery code
+          </Button>
+        </div>
+      )}
 
       <Modal open={!!newCode} onClose={() => setNewCode('')} title="New recovery code">
         <p className="text-sm text-slate-500">Write this down and keep it safe. It won&apos;t be shown again.</p>
@@ -528,21 +741,19 @@ function SecuritySection() {
           Done
         </Button>
       </Modal>
-    </Section>
+    </Card>
   )
 }
 
 function AboutSection() {
   const lastSyncAt = useLiveQuery(() => getMeta('lastSyncAt', null), [], null)
   return (
-    <Section title="About & sync">
-      <div className="space-y-1 text-sm text-slate-500">
-        <p>Machinery Piece Rates · v0.1</p>
-        <p>Last successful sync: {lastSyncAt ? new Date(lastSyncAt).toLocaleString() : 'never'}</p>
-        <p className="text-xs text-slate-400">
-          Records are saved on this device first and sync to the cloud automatically when online.
-        </p>
-      </div>
-    </Section>
+    <Card className="p-4">
+      <p className="text-sm text-slate-500">Machinery Piece Rates · v0.1</p>
+      <p className="text-sm text-slate-500">
+        Last successful sync: {lastSyncAt ? new Date(lastSyncAt).toLocaleString() : 'never'}
+      </p>
+      <p className="mt-1 text-xs text-slate-400">Records are saved on the device first and sync automatically when online.</p>
+    </Card>
   )
 }

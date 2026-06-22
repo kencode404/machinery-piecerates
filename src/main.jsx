@@ -8,10 +8,20 @@ import './index.css'
 import { AuthProvider } from './auth/AuthContext.jsx'
 import { seedIfEmpty } from './db/database.js'
 import { startSync } from './sync/syncEngine.js'
+import { purgeOldData, cleanupMachineHourlyRates, repairKerjaJamTasks } from './db/repo.js'
 
-// Seed first-run defaults, then start the background sync engine.
+// Seed first-run defaults, remove any leftover machine-level "Kerja jam" rate
+// from an earlier build, repair tasks that stored the Kerja jam sentinel id,
+// purge data past the 3-year retention window, then start the background sync
+// engine (which pushes the cleanup/repair/purge changes up).
 seedIfEmpty()
   .catch((e) => console.error('Seed failed', e))
+  .then(() => cleanupMachineHourlyRates())
+  .catch((e) => console.error('Hourly-rate cleanup failed', e))
+  .then(() => repairKerjaJamTasks())
+  .catch((e) => console.error('Kerja jam repair failed', e))
+  .then(() => purgeOldData())
+  .catch((e) => console.error('Purge failed', e))
   .finally(() => startSync())
 
 ReactDOM.createRoot(document.getElementById('root')).render(

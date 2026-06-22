@@ -31,6 +31,28 @@ export function shiftMonth(monthKey, n) {
   return monthKeyOf(d)
 }
 
+// Retention: keep the work month (and payroll month) for ~3 years. Records and
+// payroll older than this — judged by the saved data month, not the edit date —
+// are hidden from navigation and auto-purged to save space.
+export const RETENTION_MONTHS = 36
+
+/** Oldest work-month "YYYY-MM" still kept (36 months incl. the current month). */
+export function minRetainedMonthKey(now = new Date()) {
+  return shiftMonth(monthKeyOf(now), -(RETENTION_MONTHS - 1))
+}
+
+// Latitude + longitude are edited as a single "lat, lng" field.
+export function formatLatLng(lat, lng) {
+  if (lat == null && lng == null) return ''
+  return `${lat ?? ''}, ${lng ?? ''}`
+}
+export function parseLatLng(str) {
+  if (!str || !str.trim()) return { lat: null, lng: null }
+  const [a, b] = str.split(',').map((s) => s.trim())
+  const num = (v) => (v !== '' && v != null && Number.isFinite(Number(v)) ? Number(v) : null)
+  return { lat: num(a), lng: num(b) }
+}
+
 /** "13 Jun" style short day label from a day key or ISO. */
 export function shortDay(d) {
   const x = d instanceof Date ? d : new Date(d)
@@ -104,6 +126,14 @@ export function formatQty(n, unit = '') {
 /** Drop trailing zeros: 3.00 -> "3", 3.50 -> "3.5". */
 export function trimNumber(v) {
   return Number(v).toString()
+}
+
+/** Human file size, e.g. "284 KB", "1.2 MB". */
+export function formatBytes(n) {
+  if (n == null || Number.isNaN(n)) return ''
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
 }
 
 /** Short GPS label, e.g. "3.13921, 101.68685". */

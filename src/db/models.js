@@ -28,13 +28,21 @@ export const GpsSource = {
 
 export const Role = {
   OPERATOR: 'operator',
-  ADMIN: 'admin'
+  ADMIN: 'admin', // system admin (password) — manages everything
+  SITEADMIN: 'siteadmin' // a company supervisor; logs in like an operator
 }
 
 export const CreatedBy = {
   OPERATOR: 'operator',
-  ADMIN: 'admin'
+  ADMIN: 'admin', // system admin manual entry
+  SITEADMIN: 'siteadmin' // a company site admin entered it (shown like operator work)
 }
+
+// A default piece rate seeded on every machine. Its price is the machine's
+// hourly work rate, used by the dashboard to compute the "old system" salary
+// (everything paid by the hour).
+export const HOURLY_RATE_NAME = 'Kerja jam'
+export const HOURLY_RATE_UNIT = 'jam'
 
 /**
  * @typedef {Object} GeoPoint

@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { capturePhotoMeta } from '../lib/photoMeta.js'
 import { compressImage } from '../lib/image.js'
 import { GpsSource } from '../db/models.js'
-import { dateTimeSecondsOf, formatGps } from '../lib/format.js'
+import { dateTimeSecondsOf, formatGps, formatBytes } from '../lib/format.js'
 import { usePhotoUrl, Lightbox } from './PhotoThumb.jsx'
 import { IconCamera, IconPin, IconClock } from './icons.jsx'
 import { Spinner } from './ui.jsx'
@@ -17,7 +17,7 @@ import { Spinner } from './ui.jsx'
  * value:    { blob, capturedAt, gps, timeSource } | null
  * onChange: (captured | null) => void
  */
-export default function PhotoCapture({ label, hint, value, onChange, required }) {
+export default function PhotoCapture({ label, hint, value, onChange, required, compact }) {
   const inputRef = useRef(null)
   const [busy, setBusy] = useState(false)
   const [zoom, setZoom] = useState(null)
@@ -48,6 +48,50 @@ export default function PhotoCapture({ label, hint, value, onChange, required })
       : value?.gps?.source === GpsSource.DEVICE
         ? 'from device'
         : null
+
+  // Compact square tile — used for the optional 3-up photo box on the admin forms.
+  if (compact) {
+    return (
+      <div>
+        <input ref={inputRef} type="file" accept="image/*" hidden onChange={handleFile} />
+        {!value ? (
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            className="flex aspect-square w-full flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-slate-300 bg-white text-slate-400 active:bg-slate-50"
+          >
+            {busy ? <Spinner /> : <IconCamera width={20} height={20} />}
+            {label && <span className="text-[11px] font-medium">{label}</span>}
+          </button>
+        ) : (
+          <div className="relative aspect-square overflow-hidden rounded-xl border border-slate-200">
+            <img
+              src={previewUrl || ''}
+              alt=""
+              onClick={() => previewUrl && setZoom(previewUrl)}
+              className="h-full w-full object-cover"
+            />
+            <button
+              type="button"
+              onClick={() => onChange(null)}
+              className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-xs leading-none text-white"
+              aria-label="Remove photo"
+            >
+              ×
+            </button>
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              className="absolute inset-x-0 bottom-0 bg-black/50 py-0.5 text-center text-[10px] text-white"
+            >
+              {label || 'Change'}
+            </button>
+          </div>
+        )}
+        <Lightbox url={zoom} onClose={() => setZoom(null)} />
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -112,6 +156,9 @@ export default function PhotoCapture({ label, hint, value, onChange, required })
               <p className="text-[11px] text-red-500">
                 No location found. Allow location access, or upload a photo that has GPS.
               </p>
+            )}
+            {value.blob?.size != null && (
+              <p className="text-[11px] text-slate-400">Upload size ≈ {formatBytes(value.blob.size)}</p>
             )}
           </div>
           <div className="flex border-t border-slate-100">

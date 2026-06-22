@@ -14,7 +14,7 @@ body,
 
 body {
   margin: 0;
-  background: #f8fafc; /* slate-50 */
+  background: #e7edf7; /* a slightly darker, gently blue page background */
   color: #0f172a; /* slate-900 */
   -webkit-font-smoothing: antialiased;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -37,6 +37,19 @@ button {
 }
 .content-pad-bottom {
   padding-bottom: calc(env(safe-area-inset-bottom) + 5rem);
+}
+
+/* Printing (claim form): use the full page, white background. */
+@media print {
+  body {
+    background: #fff;
+  }
+  .max-w-app {
+    max-width: none !important;
+  }
+  .content-pad-bottom {
+    padding-bottom: 0 !important;
+  }
 }
 
 /* Hide number input spinners for a cleaner look. */

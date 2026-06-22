@@ -1,11 +1,19 @@
 import { useState } from 'react'
 import { buildMonthlySummary } from '../lib/summary.js'
-import { monthLabel, shiftMonth, monthKeyOf, formatMoney, formatQty, timeOf } from '../lib/format.js'
+import { monthLabel, shiftMonth, monthKeyOf, minRetainedMonthKey, formatMoney, formatQty, timeOf } from '../lib/format.js'
+import { formatHours } from '../lib/duration.js'
 import { Card, Badge, EmptyState } from './ui.jsx'
-import { IconChevron } from './icons.jsx'
+import { IconChevron, IconWarning } from './icons.jsx'
 import { SyncStatusDot } from './SyncStatusDot.jsx'
 
 const thisMonth = () => monthKeyOf(new Date())
+
+// Who entered a record — distinct label + colour.
+function createdByBadge(createdBy) {
+  if (createdBy === 'admin') return { text: 'HQ admin', color: 'blue' }
+  if (createdBy === 'siteadmin') return { text: 'Site admin', color: 'amber' }
+  return { text: 'Operator', color: 'green' }
+}
 
 /**
  * Monthly summary. Same piece rate on the same day is merged into one line;
@@ -30,6 +38,7 @@ export default function MonthSummary({
 }) {
   const summary = buildMonthlySummary(tasks || [], monthKey)
   const atCurrent = monthKey >= thisMonth()
+  const atFloor = monthKey <= minRetainedMonthKey() // 3-year retention limit
 
   return (
     <div className="space-y-3">
@@ -37,8 +46,9 @@ export default function MonthSummary({
       <Card className="p-4">
         <div className="flex items-center justify-between">
           <button
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 active:bg-slate-100"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 active:bg-slate-100 disabled:opacity-30"
             onClick={() => onMonthChange(shiftMonth(monthKey, -1))}
+            disabled={atFloor}
             aria-label="Previous month"
           >
             <IconChevron width={20} height={20} className="rotate-180" />
@@ -58,10 +68,12 @@ export default function MonthSummary({
             <IconChevron width={20} height={20} />
           </button>
         </div>
-        <div className="mt-3 flex justify-center gap-4 text-xs text-slate-500">
+        <div className="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs text-slate-500">
           <span>{summary.recordCount} records</span>
           <span>·</span>
           <span>{summary.days.length} working days</span>
+          <span>·</span>
+          <span>{formatHours(summary.totalMinutes)}</span>
           {summary.openCount > 0 && (
             <>
               <span>·</span>
@@ -123,7 +135,7 @@ function DayCard({ day, currency, showOperator, onRecordClick }) {
         <p className="text-sm font-semibold text-slate-700">{dayHeading(day.dayKey)}</p>
         <p className="text-sm font-bold text-slate-900">{formatMoney(day.totalAmount, currency)}</p>
       </div>
-      <div className="divide-y divide-slate-100">
+      <div className="divide-y-2 divide-slate-200">
         {day.groups.map((g) => (
           <RateGroup
             key={g.rateKey}
@@ -148,7 +160,12 @@ function RateGroup({ group, currency, showOperator, onRecordClick }) {
         onClick={() => setOpen((v) => !v)}
       >
         <div className="min-w-0">
-          <p className="truncate font-medium text-slate-800">{group.pieceRateName}</p>
+          <p className="flex items-center gap-1.5 truncate font-medium text-slate-800">
+            {group.pieceRateName === 'Unspecified' && (
+              <IconWarning width={14} height={14} className="shrink-0 text-amber-500" aria-label="No piece rate set" />
+            )}
+            {group.pieceRateName}
+          </p>
           <p className="text-xs text-slate-400">
             {formatQty(group.totalQty, group.unit)}
             {multiple ? ` · ${group.records.length} entries` : ''}
@@ -165,7 +182,7 @@ function RateGroup({ group, currency, showOperator, onRecordClick }) {
       </button>
 
       {open && (
-        <div className="space-y-1 bg-slate-50/60 px-3 pb-3">
+        <div className="space-y-1 bg-slate-50/60 px-2.5 pb-2.5">
           {group.records.map((t) => (
             <RecordRow
               key={t.id}
@@ -182,28 +199,43 @@ function RateGroup({ group, currency, showOperator, onRecordClick }) {
 }
 
 function RecordRow({ task, currency, showOperator, onClick }) {
+  // Flag records where the piece rate or quantity was left blank. "Kerja jam"
+  // has no rate id but does carry a name, so treat a present name as "has a rate".
+  const incomplete = (task.pieceRateId == null && !task.pieceRateName) || task.quantity == null
+  // For hour-based work (Kerja jam) the quantity already is the hours, so the
+  // duration would be redundant — show the unit only.
+  const unitIsHours = (task.unit || '').toLowerCase() === 'jam'
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`flex w-full items-center justify-between rounded-lg border border-slate-100 bg-white px-3 py-2 text-left ${
+      className={`flex w-full items-center justify-between rounded-md border border-slate-100 bg-white px-2.5 py-1.5 text-left ${
         onClick ? 'active:bg-slate-100' : 'cursor-default'
       }`}
     >
       <div className="min-w-0">
-        <p className="text-sm text-slate-700">
-          {timeOf(task.startTime)}
-          {task.endTime ? `–${timeOf(task.endTime)}` : ''} · {formatQty(task.quantity, task.unit)}
+        <p className="flex items-center gap-1 text-xs text-slate-700">
+          {incomplete && (
+            <IconWarning width={12} height={12} className="shrink-0 text-amber-500" aria-label="Piece rate or quantity missing" />
+          )}
+          <span className="truncate">
+            {task.quantity == null ? 'No quantity' : formatQty(task.quantity, task.unit)}
+            {!unitIsHours && task.durationMinutes != null ? ` · ${formatHours(task.durationMinutes)}` : ''}
+          </span>
         </p>
-        <p className="truncate text-xs text-slate-400">
-          {task.areaName || 'No area'}
-          {task.machineName ? ` · ${task.machineName}` : ''}
-          {showOperator ? ` · ${task.operatorName}` : ''}
-          {task.createdBy === 'admin' ? ' · added by admin' : ''}
-        </p>
+        <div className="mt-0.5 flex items-center gap-1">
+          <Badge color={createdByBadge(task.createdBy).color} className="px-1.5 py-0 text-[10px]">
+            {createdByBadge(task.createdBy).text}
+          </Badge>
+          <span className="truncate text-[11px] text-slate-400">
+            {task.areaName || 'No area'}
+            {task.machineName ? ` · ${task.machineName}` : ''}
+            {showOperator ? ` · ${task.operatorName}` : ''}
+          </span>
+        </div>
       </div>
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-medium text-slate-700">{formatMoney(task.amount, currency)}</span>
+      <div className="flex items-center gap-1.5">
+        <span className="text-xs font-semibold text-slate-700">{formatMoney(task.amount, currency)}</span>
         <SyncStatusDot status={task.syncStatus} />
       </div>
     </button>

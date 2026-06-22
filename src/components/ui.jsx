@@ -81,9 +81,24 @@ export function TextArea({ className = '', rows = 3, ...props }) {
 
 export function Select({ className = '', children, ...props }) {
   return (
-    <select className={cx(inputBase, 'appearance-none pr-9 bg-no-repeat', className)} {...props}>
-      {children}
-    </select>
+    <div className="relative">
+      <select className={cx(inputBase, 'appearance-none pr-9', className)} {...props}>
+        {children}
+      </select>
+      {/* visible drop-down arrow */}
+      <svg
+        className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M6 9l6 6 6-6" />
+      </svg>
+    </div>
   )
 }
 

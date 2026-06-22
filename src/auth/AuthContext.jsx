@@ -31,9 +31,8 @@ export function AuthProvider({ children }) {
         const raw = localStorage.getItem(SESSION_KEY)
         if (raw) {
           const u = JSON.parse(raw)
-          // Drop stale pre-company operator sessions (missing companyId/operatorName)
-          // so the new login flow runs instead of crashing on an invalid query.
-          if (u?.role === Role.OPERATOR && (!u.companyId || !u.operatorName)) {
+          // Drop stale operator/site-admin sessions that predate the account model.
+          if ((u?.role === Role.OPERATOR || u?.role === Role.SITEADMIN) && !u.operatorId) {
             localStorage.removeItem(SESSION_KEY)
           } else {
             setUser(u)
@@ -82,33 +81,33 @@ export function AuthProvider({ children }) {
     [persist]
   )
 
-  // Operator login: Company -> Machine -> per-machine PIN -> typed username.
+  // Operator login: type your username (case-insensitive) + PIN. The list of
+  // operators/companies is never shown to operators.
   const loginOperator = useCallback(
-    async ({ companyId, machineId, pin, username }) => {
-      const name = (username || '').trim()
-      if (!companyId) throw new Error('Choose a company.')
-      if (!machineId) throw new Error('Choose a machine.')
-      if (!name) throw new Error('Enter your name.')
-      const machine = await db.machines.get(machineId)
-      if (!machine || !machine.active || machine.companyId !== companyId) {
-        throw new Error('Machine not found.')
+    async ({ username, pin, expect }) => {
+      const uname = (username || '').trim().toLowerCase()
+      if (!uname) throw new Error('Enter your username.')
+      const all = await db.operators.toArray()
+      const op = all.find((o) => o.active && (o.name || '').trim().toLowerCase() === uname)
+      // Check the username first, then the PIN.
+      if (!op) throw new Error('Username does not exist.')
+      if (!op.pinHash) throw new Error('No PIN set yet. Ask the admin.')
+      if (!(await verifySecret(pin, op.pinHash))) throw new Error('Incorrect PIN.')
+      if (expect === 'siteadmin' && !op.isSiteAdmin) {
+        throw new Error('This is not a site-admin account. Use the Operator login.')
       }
-      if (!machine.pinHash) throw new Error('This machine has no PIN yet. Ask the admin.')
-      if (!(await verifySecret(pin, machine.pinHash))) throw new Error('Wrong PIN.')
-      const company = await db.companies.get(companyId)
+      if (expect === 'operator' && op.isSiteAdmin) {
+        throw new Error('This is a site-admin account. Use the Site Admin login.')
+      }
+      const company = op.companyId ? await db.companies.get(op.companyId) : null
       const session = {
-        role: Role.OPERATOR,
-        companyId,
+        role: op.isSiteAdmin ? Role.SITEADMIN : Role.OPERATOR,
+        operatorId: op.id,
+        operatorName: op.name,
+        companyId: op.companyId || null,
         companyName: company?.name || '',
-        machineId,
-        machineName: machine.name || '',
-        operatorName: name,
-        name // shown in the top bar
-      }
-      try {
-        localStorage.setItem('mpr.lastOperator', JSON.stringify({ companyId, machineId, operatorName: name }))
-      } catch {
-        /* ignore */
+        name: op.name, // shown in the top bar
+        loginAt: new Date().toISOString() // used by the force-logout check
       }
       persist(session)
     },
@@ -150,24 +149,6 @@ export function AuthProvider({ children }) {
     return newRecovery
   }, [])
 
-  // Change the display name after login (records keep the name used at the time).
-  const updateOperatorName = useCallback((name) => {
-    const trimmed = (name || '').trim()
-    if (!trimmed) return
-    setUser((prev) => {
-      if (!prev) return prev
-      const next = { ...prev, operatorName: trimmed, name: trimmed }
-      try {
-        localStorage.setItem(SESSION_KEY, JSON.stringify(next))
-        const last = JSON.parse(localStorage.getItem('mpr.lastOperator') || 'null') || {}
-        localStorage.setItem('mpr.lastOperator', JSON.stringify({ ...last, operatorName: trimmed }))
-      } catch {
-        /* ignore */
-      }
-      return next
-    })
-  }, [])
-
   const logout = useCallback(() => persist(null), [persist])
 
   const value = {
@@ -176,11 +157,11 @@ export function AuthProvider({ children }) {
     adminConfigured,
     lastOperator,
     isAdmin: user?.role === Role.ADMIN,
+    isSiteAdmin: user?.role === Role.SITEADMIN,
     isOperator: user?.role === Role.OPERATOR,
     setupAdmin,
     loginAdmin,
     loginOperator,
-    updateOperatorName,
     resetAdminPassword,
     changeAdminPassword,
     regenerateRecovery,

@@ -1,10 +1,27 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { getTask, completeTask, listPieceRates, listAreas } from '../../db/repo.js'
-import { TaskStatus } from '../../db/models.js'
-import { minutesBetween, formatDuration } from '../../lib/duration.js'
-import { timeOf, dateTimeOf, formatMoney, toLocalInput, fromLocalInput } from '../../lib/format.js'
+import { useAuth } from '../../auth/AuthContext.jsx'
+import {
+  getTask,
+  completeTask,
+  listPieceRates,
+  listAreas,
+  listOperatorMachines,
+  listCompanies,
+  getOperator,
+  kerjaJamRate
+} from '../../db/repo.js'
+import { TaskStatus, GpsSource } from '../../db/models.js'
+import { minutesBetween, formatHours } from '../../lib/duration.js'
+import { timeOf, dateTimeOf, formatMoney, toLocalInput, fromLocalInput, formatLatLng, parseLatLng } from '../../lib/format.js'
+
+const geoFor = (loc, fallback) => {
+  const { lat, lng } = parseLatLng(loc)
+  if (lat == null && lng == null) return fallback || undefined
+  const changed = lat !== (fallback?.lat ?? null) || lng !== (fallback?.lng ?? null)
+  return { lat, lng, source: changed ? GpsSource.MANUAL : fallback?.source || GpsSource.DEVICE, accuracy: fallback?.accuracy ?? null }
+}
 import { getMeta } from '../../db/database.js'
 import PhotoCapture from '../../components/PhotoCapture.jsx'
 import { PhotoById } from '../../components/PhotoThumb.jsx'
@@ -14,29 +31,58 @@ import { Button, Card, Field, NumberInput, TextInput, TextArea, Select, Spinner 
 export default function CompleteTask() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { user } = useAuth()
 
   const task = useLiveQuery(() => getTask(id), [id], undefined)
-  const rates = useLiveQuery(() => listPieceRates(), [], [])
-  const areas = useLiveQuery(() => listAreas(), [], [])
+  const machines = useLiveQuery(() => listOperatorMachines(user.operatorId), [user.operatorId], [])
+  const operator = useLiveQuery(() => getOperator(user.operatorId), [user.operatorId], null)
+  const companies = useLiveQuery(() => listCompanies({ includeInactive: true }), [], [])
+  const areas = useLiveQuery(() => listAreas({ companyId: user.companyId }), [user.companyId], [])
   const currency = useLiveQuery(() => getMeta('currency', 'RM'), [], 'RM')
 
   const [endPhoto, setEndPhoto] = useState(null)
   const [endTime, setEndTime] = useState('')
   const [timeTouched, setTimeTouched] = useState(false)
+  const [endLoc, setEndLoc] = useState('')
+  const [locTouched, setLocTouched] = useState(false)
+  const [machineId, setMachineId] = useState('')
   const [rateId, setRateId] = useState('')
   const [quantity, setQuantity] = useState('')
   const [areaId, setAreaId] = useState('')
   const [notes, setNotes] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const submitting = useRef(false)
 
-  // Suggest end time from the end photo until edited by hand.
+  // Piece rates belong to the chosen machine.
+  const rates = useLiveQuery(
+    () => (machineId ? listPieceRates({ machineId }) : Promise.resolve([])),
+    [machineId],
+    []
+  )
+
   const suggested = endPhoto?.capturedAt || null
   useEffect(() => {
     if (!timeTouched && suggested) setEndTime(toLocalInput(suggested))
   }, [suggested, timeTouched])
 
-  const rate = useMemo(() => (rates || []).find((r) => r.id === rateId) || null, [rates, rateId])
+  // Pre-fill the location from the end photo's GPS, until edited by hand.
+  useEffect(() => {
+    if (locTouched) return
+    if (endPhoto?.gps?.lat != null) setEndLoc(formatLatLng(endPhoto.gps.lat, endPhoto.gps.lng))
+  }, [endPhoto, locTouched])
+
+  const machine = useMemo(() => (machines || []).find((m) => m.id === machineId) || null, [machines, machineId])
+  const company = useMemo(
+    () => (companies || []).find((c) => c.id === machine?.companyId) || null,
+    [companies, machine]
+  )
+  // "Kerja jam" (operator hourly rate) is offered alongside the machine's rates.
+  const rateOptions = useMemo(
+    () => (machineId ? [kerjaJamRate(operator), ...(rates || [])] : []),
+    [machineId, operator, rates]
+  )
+  const rate = useMemo(() => rateOptions.find((r) => r.id === rateId) || null, [rateOptions, rateId])
   const area = useMemo(() => (areas || []).find((a) => a.id === areaId) || null, [areas, areaId])
 
   const endISO = fromLocalInput(endTime)
@@ -61,24 +107,30 @@ export default function CompleteTask() {
     )
   }
 
-  const canSave = endPhoto && endTime && rateId && quantity !== '' && Number(quantity) > 0 && areaId
+  // Piece rate + quantity are optional. Everything else is still required.
+  const canSave = endPhoto && endTime && machineId && areaId
 
   async function submit(e) {
     e.preventDefault()
+    if (submitting.current) return
     setError('')
     if (!canSave) {
-      setError('Add the end photo, end time, piece rate, quantity and area.')
+      setError('Add the end photo, end time, machine and area.')
       return
     }
     if (durationMins == null) {
       setError('The end time is before the start time. Adjust the end time.')
       return
     }
+    submitting.current = true
     setBusy(true)
     try {
       await completeTask(id, {
         endTime: endISO,
         endPhoto,
+        endGps: geoFor(endLoc, endPhoto?.gps),
+        machine,
+        company,
         pieceRate: rate,
         quantity,
         area,
@@ -88,6 +140,7 @@ export default function CompleteTask() {
     } catch (err) {
       setError(err.message || 'Could not save.')
       setBusy(false)
+      submitting.current = false
     }
   }
 
@@ -125,27 +178,60 @@ export default function CompleteTask() {
               }}
             />
           </Field>
+          <Field label="End location" hint="From the photo — edit if needed (latitude, longitude)">
+            <TextInput
+              value={endLoc}
+              onChange={(e) => {
+                setLocTouched(true)
+                setEndLoc(e.target.value)
+              }}
+              placeholder="e.g. 3.13921, 101.6869"
+            />
+          </Field>
           <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
             <span className="text-sm text-slate-500">Duration (auto)</span>
             <span className="text-lg font-bold text-slate-800">
-              {durationMins == null ? '—' : formatDuration(durationMins)}
+              {formatHours(durationMins)}
             </span>
           </div>
         </Card>
 
         <Card className="space-y-4 p-4">
-          <Field label="Piece rate work" required>
-            <Select value={rateId} onChange={(e) => setRateId(e.target.value)}>
-              <option value="">Choose work type…</option>
-              {(rates || []).map((r) => (
+          <Field label="Machine used" required>
+            <Select
+              value={machineId}
+              onChange={(e) => {
+                setMachineId(e.target.value)
+                setRateId('') // rates depend on the machine
+              }}
+            >
+              <option value="">Choose machine…</option>
+              {(machines || []).map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </Select>
+            {machines && machines.length === 0 && (
+              <p className="mt-1 text-xs text-red-500">No machines assigned to you. Ask your admin.</p>
+            )}
+          </Field>
+
+          <Field label="Piece rate work" hint={machineId ? 'Optional — leave blank if not known yet' : 'Choose a machine first'}>
+            <Select value={rateId} onChange={(e) => setRateId(e.target.value)} disabled={!machineId}>
+              <option value="">{machineId ? 'Choose work type…' : 'Pick a machine first'}</option>
+              {rateOptions.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.name} — {formatMoney(r.price, currency)}/{r.unit}
                 </option>
               ))}
             </Select>
+            {machineId && rates && rates.length === 0 && (
+              <p className="mt-1 text-xs text-red-500">This machine has no piece rates yet. Ask your admin.</p>
+            )}
           </Field>
 
-          <Field label={`Quantity${rate ? ` (${rate.unit})` : ''}`} required hint="Units of work done">
+          <Field label={`Quantity${rate ? ` (${rate.unit})` : ''}`} hint="Optional — units of work done">
             <NumberInput value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="e.g. 3" />
           </Field>
 

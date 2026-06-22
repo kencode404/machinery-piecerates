@@ -1,6 +1,4 @@
-import { useState, useEffect } from 'react'
-import { useLiveQuery } from 'dexie-react-hooks'
-import { listCompanies, listMachines } from '../db/repo.js'
+import { useState } from 'react'
 import { useAuth } from './AuthContext.jsx'
 import { Button, Card, Field, TextInput } from '../components/ui.jsx'
 
@@ -19,7 +17,7 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-full bg-slate-50 px-5 pt-safe">
+    <div className="min-h-full px-5 pt-safe">
       <div className="mx-auto flex min-h-[100dvh] w-full max-w-app flex-col justify-center py-10">
         <div className="mb-8 text-center">
           <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="" className="mx-auto h-16 w-16 rounded-2xl" />
@@ -28,7 +26,8 @@ export default function Login() {
         </div>
 
         {mode === 'home' && <Home onPick={setMode} />}
-        {mode === 'operator' && <OperatorLogin onBack={() => setMode('home')} />}
+        {mode === 'operator' && <OperatorLogin kind="operator" onBack={() => setMode('home')} />}
+        {mode === 'siteadmin' && <OperatorLogin kind="siteadmin" onBack={() => setMode('home')} />}
         {mode === 'admin' && (
           <AdminLogin
             onBack={() => setMode('home')}
@@ -69,109 +68,31 @@ function Home({ onPick }) {
   return (
     <div className="space-y-3">
       <Button full size="lg" onClick={() => onPick('operator')}>
-        I&apos;m an Operator
+        Operator
+      </Button>
+      <Button full size="lg" variant="secondary" onClick={() => onPick('siteadmin')}>
+        Site Admin
       </Button>
       <Button full size="lg" variant="secondary" onClick={() => onPick('admin')}>
-        Admin
+        HQ Admin
       </Button>
     </div>
   )
 }
 
-function OperatorLogin({ onBack }) {
+function OperatorLogin({ onBack, kind }) {
   const auth = useAuth()
-  const last = auth.lastOperator
-  const companies = useLiveQuery(() => listCompanies(), [], [])
-
-  const [companyId, setCompanyId] = useState(last?.companyId || '')
-  const [machineId, setMachineId] = useState(last?.machineId || '')
-  const [username, setUsername] = useState(last?.operatorName || '')
-  const [editName, setEditName] = useState(!last?.operatorName) // ask for name only first time
+  const [username, setUsername] = useState('')
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const machines = useLiveQuery(
-    () => (companyId ? listMachines({ companyId }) : Promise.resolve([])),
-    [companyId],
-    []
-  )
-  const company = (companies || []).find((c) => c.id === companyId)
-  const machine = (machines || []).find((m) => m.id === machineId)
-
-  // Recover gracefully if a remembered company/machine was deleted.
-  useEffect(() => {
-    if (companyId && companies && companies.length && !companies.find((c) => c.id === companyId)) {
-      setCompanyId('')
-      setMachineId('')
-    }
-  }, [companies, companyId])
-  useEffect(() => {
-    if (machineId && machines && machines.length && !machines.find((m) => m.id === machineId)) {
-      setMachineId('')
-    }
-  }, [machines, machineId])
-
-  // Step 1 — company
-  if (!companyId) {
-    return (
-      <Card className="p-4">
-        <p className="mb-3 text-sm font-medium text-slate-600">Choose your company</p>
-        <div className="grid grid-cols-1 gap-2">
-          {(companies || []).map((c) => (
-            <Button
-              key={c.id}
-              variant="secondary"
-              className="h-12"
-              onClick={() => {
-                setCompanyId(c.id)
-                setMachineId('')
-              }}
-            >
-              {c.name}
-            </Button>
-          ))}
-        </div>
-        {companies && companies.length === 0 && (
-          <p className="py-6 text-center text-sm text-slate-400">No companies yet. Ask your admin.</p>
-        )}
-        <Button variant="ghost" full className="mt-3" onClick={onBack}>
-          ← Back
-        </Button>
-      </Card>
-    )
-  }
-
-  // Step 2 — machine
-  if (!machineId) {
-    return (
-      <Card className="p-4">
-        <p className="mb-1 text-xs uppercase tracking-wide text-slate-400">{company?.name}</p>
-        <p className="mb-3 text-sm font-medium text-slate-600">Choose your machine</p>
-        <div className="grid grid-cols-1 gap-2">
-          {(machines || []).map((m) => (
-            <Button key={m.id} variant="secondary" className="h-12" onClick={() => setMachineId(m.id)}>
-              {m.name}
-            </Button>
-          ))}
-        </div>
-        {machines && machines.length === 0 && (
-          <p className="py-6 text-center text-sm text-slate-400">No machines in this company yet.</p>
-        )}
-        <Button variant="ghost" full className="mt-3" onClick={() => setCompanyId('')}>
-          ← Change company
-        </Button>
-      </Card>
-    )
-  }
-
-  // Step 3 — name + machine PIN
   async function submit(e) {
     e.preventDefault()
     setError('')
     setBusy(true)
     try {
-      await auth.loginOperator({ companyId, machineId, pin, username })
+      await auth.loginOperator({ username, pin, expect: kind })
     } catch (err) {
       setError(err.message)
       setPin('')
@@ -183,34 +104,21 @@ function OperatorLogin({ onBack }) {
   return (
     <Card className="p-4">
       <form onSubmit={submit} className="space-y-4">
-        <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
-          <p>
-            <span className="text-slate-400">Company:</span> {company?.name}
-          </p>
-          <p>
-            <span className="text-slate-400">Machine:</span> {machine?.name}
-          </p>
-        </div>
-        {editName ? (
-          <Field label="Your name" required hint="Set once — you can change it later in the app">
-            <TextInput
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="e.g. Ahmad"
-              autoFocus={!username}
-            />
-          </Field>
-        ) : (
-          <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
-            <span className="text-slate-600">
-              Signing in as <b className="text-slate-800">{username}</b>
-            </span>
-            <button type="button" className="font-medium text-brand" onClick={() => setEditName(true)}>
-              Change
-            </button>
-          </div>
-        )}
-        <Field label="Machine PIN" required error={error}>
+        <p className="text-sm font-semibold text-slate-700">
+          {kind === 'siteadmin' ? 'Site admin sign in' : 'Operator sign in'}
+        </p>
+        <Field label="Username" required>
+          <TextInput
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="your username"
+            autoFocus
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+          />
+        </Field>
+        <Field label="PIN" required error={error}>
           <TextInput
             type="password"
             inputMode="numeric"
@@ -218,14 +126,13 @@ function OperatorLogin({ onBack }) {
             onChange={(e) => setPin(e.target.value)}
             placeholder="••••"
             className="text-center text-2xl tracking-[0.5em]"
-            autoFocus={!!username}
           />
         </Field>
-        <Button full type="submit" disabled={busy || !username || pin.length < 3}>
+        <Button full type="submit" disabled={busy || !username.trim() || pin.length < 3}>
           {busy ? 'Checking…' : 'Sign in'}
         </Button>
-        <Button type="button" variant="ghost" full onClick={() => setMachineId('')}>
-          ← Change machine
+        <Button type="button" variant="ghost" full onClick={onBack}>
+          ← Back
         </Button>
       </form>
     </Card>
@@ -268,17 +175,18 @@ function AdminLogin({ onBack, onForgot, onNeedSetup, configured }) {
   return (
     <Card className="p-4">
       <form onSubmit={submit} className="space-y-4">
-        <Field label="Admin password" error={error}>
+        <p className="text-sm font-semibold text-slate-700">HQ admin sign in</p>
+        <Field label="HQ admin password" error={error}>
           <TextInput
             type="password"
             autoFocus
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Enter admin password"
+            placeholder="Enter HQ admin password"
           />
         </Field>
         <Button full type="submit" disabled={busy || !password}>
-          {busy ? 'Checking…' : 'Sign in as admin'}
+          {busy ? 'Checking…' : 'Sign in as HQ admin'}
         </Button>
         <div className="flex items-center justify-between">
           <Button type="button" variant="ghost" size="sm" onClick={onBack}>

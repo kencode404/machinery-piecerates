@@ -11,7 +11,7 @@ import { IconChevron, IconPlus } from '../../components/icons.jsx'
 export default function OpenTasks() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const tasks = useLiveQuery(() => getOpenTasks(user), [user.machineId], undefined)
+  const tasks = useLiveQuery(() => getOpenTasks(user), [user.operatorId], undefined)
 
   return (
     <div className="space-y-3 pb-4">

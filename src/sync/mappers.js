@@ -118,13 +118,14 @@ export function fromServerPhoto(r, existingBlob = null) {
 }
 
 export function toServerCompany(c) {
-  return { id: c.id, name: c.name, active: c.active, updated_at: c.updatedAt }
+  return { id: c.id, name: c.name, active: c.active, signers: c.signers ?? null, updated_at: c.updatedAt }
 }
 export function fromServerCompany(r) {
   return {
     id: r.id,
     name: r.name,
     active: r.active,
+    signers: r.signers ?? null,
     updatedAt: r.updated_at,
     syncStatus: SyncStatus.SYNCED
   }
@@ -155,6 +156,7 @@ export function fromServerMachine(r) {
 export function toServerPieceRate(p) {
   return {
     id: p.id,
+    machine_id: p.machineId ?? null,
     name: p.name,
     unit: p.unit,
     price: p.price,
@@ -165,6 +167,7 @@ export function toServerPieceRate(p) {
 export function fromServerPieceRate(r) {
   return {
     id: r.id,
+    machineId: r.machine_id ?? null,
     name: r.name,
     unit: r.unit,
     price: r.price,
@@ -174,12 +177,82 @@ export function fromServerPieceRate(r) {
   }
 }
 
+export function toServerOperator(o) {
+  return {
+    id: o.id,
+    name: o.name,
+    company_id: o.companyId ?? null,
+    pin: o.pin ?? null,
+    pin_hash: o.pinHash ?? null,
+    active: o.active,
+    is_site_admin: o.isSiteAdmin ?? false,
+    basic_salary: o.basicSalary ?? null,
+    phone_allowance: o.phoneAllowance ?? null,
+    hourly_rate: o.hourlyRate ?? null,
+    machine_ids: o.machineIds ?? [],
+    force_logout_at: o.forceLogoutAt ?? null,
+    updated_at: o.updatedAt
+  }
+}
+export function fromServerOperator(r) {
+  return {
+    id: r.id,
+    name: r.name,
+    companyId: r.company_id ?? null,
+    pin: r.pin ?? null,
+    pinHash: r.pin_hash ?? null,
+    active: r.active,
+    isSiteAdmin: r.is_site_admin === true,
+    basicSalary: r.basic_salary ?? null,
+    phoneAllowance: r.phone_allowance ?? null,
+    hourlyRate: r.hourly_rate ?? null,
+    machineIds: Array.isArray(r.machine_ids) ? r.machine_ids : [],
+    forceLogoutAt: r.force_logout_at ?? null,
+    updatedAt: r.updated_at,
+    syncStatus: SyncStatus.SYNCED
+  }
+}
+
+export function toServerClaim(c) {
+  return {
+    id: c.id,
+    operator_id: c.operatorId ?? null,
+    month_key: c.monthKey ?? null,
+    incentives: Array.isArray(c.incentives) ? c.incentives : [],
+    updated_at: c.updatedAt
+  }
+}
+export function fromServerClaim(r) {
+  return {
+    id: r.id,
+    operatorId: r.operator_id ?? null,
+    monthKey: r.month_key ?? null,
+    incentives: Array.isArray(r.incentives) ? r.incentives : [],
+    updatedAt: r.updated_at,
+    syncStatus: SyncStatus.SYNCED
+  }
+}
+
+export function toServerMonthLock(l) {
+  return { id: l.id, locked: !!l.locked, locked_at: l.lockedAt ?? null, updated_at: l.updatedAt }
+}
+export function fromServerMonthLock(r) {
+  return {
+    id: r.id,
+    locked: !!r.locked,
+    lockedAt: r.locked_at ?? null,
+    updatedAt: r.updated_at,
+    syncStatus: SyncStatus.SYNCED
+  }
+}
+
 export function toServerArea(a) {
-  return { id: a.id, name: a.name, active: a.active, updated_at: a.updatedAt }
+  return { id: a.id, company_id: a.companyId ?? null, name: a.name, active: a.active, updated_at: a.updatedAt }
 }
 export function fromServerArea(r) {
   return {
     id: r.id,
+    companyId: r.company_id ?? null,
     name: r.name,
     active: r.active,
     updatedAt: r.updated_at,

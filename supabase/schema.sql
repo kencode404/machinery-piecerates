@@ -16,16 +16,28 @@ grant usage on schema "machinery-piecerate" to anon, authenticated, service_role
 -- Tables
 -- ---------------------------------------------------------------------------
 
+-- Operators are the login accounts (name + PIN). machine_ids = the machines
+-- the admin lets them use.
 create table if not exists "machinery-piecerate".operators (
   id uuid primary key,
   name text not null,
+  company_id uuid,
+  pin text,
   pin_hash text,
   active boolean not null default true,
+  is_site_admin boolean not null default false,
+  basic_salary numeric,
+  phone_allowance numeric,
+  hourly_rate numeric,
+  machine_ids jsonb not null default '[]'::jsonb,
+  force_logout_at timestamptz,
   updated_at timestamptz not null default now()
 );
 
+-- Piece rates belong to a machine.
 create table if not exists "machinery-piecerate".piece_rates (
   id uuid primary key,
+  machine_id uuid,
   name text not null,
   unit text,
   price numeric not null default 0,
@@ -33,8 +45,10 @@ create table if not exists "machinery-piecerate".piece_rates (
   updated_at timestamptz not null default now()
 );
 
+-- Areas belong to a company (a per-company land category).
 create table if not exists "machinery-piecerate".areas (
   id uuid primary key,
+  company_id uuid,
   name text not null,
   active boolean not null default true,
   updated_at timestamptz not null default now()
@@ -44,6 +58,7 @@ create table if not exists "machinery-piecerate".companies (
   id uuid primary key,
   name text not null,
   active boolean not null default true,
+  signers jsonb,
   updated_at timestamptz not null default now()
 );
 
@@ -103,6 +118,25 @@ create table if not exists "machinery-piecerate".tasks (
   updated_at timestamptz not null default now()
 );
 
+-- Per-operator, per-month claim-form extras (Bahagian B incentives), saved so
+-- an admin can fill them ahead and they persist for that operator + month.
+create table if not exists "machinery-piecerate".claims (
+  id text primary key,
+  operator_id uuid,
+  month_key text,
+  incentives jsonb not null default '[]'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+-- Per-month payroll lock. A locked month's records + payroll cannot be changed
+-- until an admin unlocks it. id = the monthKey ("YYYY-MM").
+create table if not exists "machinery-piecerate".month_locks (
+  id text primary key,
+  locked boolean not null default false,
+  locked_at timestamptz,
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists "machinery-piecerate".photos (
   id uuid primary key,
   task_id uuid references "machinery-piecerate".tasks (id) on delete cascade,
@@ -115,11 +149,22 @@ create table if not exists "machinery-piecerate".photos (
   updated_at timestamptz not null default now()
 );
 
--- If tasks already existed from an earlier version, add the new columns.
+-- If tables already existed from an earlier version, add the new columns.
 alter table "machinery-piecerate".tasks add column if not exists company_id uuid;
 alter table "machinery-piecerate".tasks add column if not exists company_name text;
 alter table "machinery-piecerate".tasks add column if not exists machine_id uuid;
 alter table "machinery-piecerate".tasks add column if not exists machine_name text;
+alter table "machinery-piecerate".piece_rates add column if not exists machine_id uuid;
+alter table "machinery-piecerate".operators add column if not exists machine_ids jsonb not null default '[]'::jsonb;
+alter table "machinery-piecerate".operators add column if not exists company_id uuid;
+alter table "machinery-piecerate".operators add column if not exists force_logout_at timestamptz;
+alter table "machinery-piecerate".operators add column if not exists pin text;
+alter table "machinery-piecerate".operators add column if not exists is_site_admin boolean not null default false;
+alter table "machinery-piecerate".operators add column if not exists basic_salary numeric;
+alter table "machinery-piecerate".operators add column if not exists phone_allowance numeric;
+alter table "machinery-piecerate".operators add column if not exists hourly_rate numeric;
+alter table "machinery-piecerate".areas add column if not exists company_id uuid;
+alter table "machinery-piecerate".companies add column if not exists signers jsonb;
 
 -- Indexes that match how the app queries / pulls (by updated_at cursor).
 create index if not exists tasks_month_key_idx on "machinery-piecerate".tasks (month_key);
@@ -132,7 +177,12 @@ create index if not exists companies_updated_idx on "machinery-piecerate".compan
 create index if not exists machines_updated_idx on "machinery-piecerate".machines (updated_at);
 create index if not exists machines_company_idx on "machinery-piecerate".machines (company_id);
 create index if not exists piece_rates_updated_idx on "machinery-piecerate".piece_rates (updated_at);
+create index if not exists piece_rates_machine_idx on "machinery-piecerate".piece_rates (machine_id);
+create index if not exists operators_updated_idx on "machinery-piecerate".operators (updated_at);
 create index if not exists areas_updated_idx on "machinery-piecerate".areas (updated_at);
+create index if not exists claims_updated_idx on "machinery-piecerate".claims (updated_at);
+create index if not exists claims_operator_month_idx on "machinery-piecerate".claims (operator_id, month_key);
+create index if not exists month_locks_updated_idx on "machinery-piecerate".month_locks (updated_at);
 
 -- ---------------------------------------------------------------------------
 -- Privileges (PostgREST needs explicit grants on the tables)
@@ -153,15 +203,18 @@ alter default privileges in schema "machinery-piecerate"
 -- ---------------------------------------------------------------------------
 alter table "machinery-piecerate".companies   enable row level security;
 alter table "machinery-piecerate".machines    enable row level security;
+alter table "machinery-piecerate".operators   enable row level security;
 alter table "machinery-piecerate".piece_rates enable row level security;
 alter table "machinery-piecerate".areas       enable row level security;
+alter table "machinery-piecerate".claims      enable row level security;
+alter table "machinery-piecerate".month_locks enable row level security;
 alter table "machinery-piecerate".tasks       enable row level security;
 alter table "machinery-piecerate".photos      enable row level security;
 
 do $$
 declare t text;
 begin
-  foreach t in array array['companies','machines','piece_rates','areas','tasks','photos'] loop
+  foreach t in array array['companies','machines','operators','piece_rates','areas','claims','month_locks','tasks','photos'] loop
     execute format('drop policy if exists "app_all" on "machinery-piecerate".%I;', t);
     execute format(
       'create policy "app_all" on "machinery-piecerate".%I for all to anon, authenticated using (true) with check (true);',
@@ -198,6 +251,44 @@ drop policy if exists "photos_anon_select" on storage.objects;
 create policy "photos_anon_select" on storage.objects
   for select to anon, authenticated
   using (bucket_id = 'photos');
+
+-- ---------------------------------------------------------------------------
+-- Retention: keep ~3 years (36 months) of records + payroll, judged by the
+-- WORK / payroll month (month_key), NOT the row's edit date. Older data is
+-- removed to save space. The client purges on startup (and removes the photo
+-- files), but this server-side job is a safety net that also runs unattended.
+-- ---------------------------------------------------------------------------
+create or replace function "machinery-piecerate".purge_old_data()
+returns void
+language plpgsql
+as $fn$
+declare
+  cutoff text := to_char((now() - interval '35 months'), 'YYYY-MM'); -- keep 36 months incl. current
+begin
+  -- Remove the photo FILES for old tasks first (free Storage), then their rows.
+  delete from storage.objects o
+    using "machinery-piecerate".photos p, "machinery-piecerate".tasks t
+    where o.bucket_id = 'photos' and o.name = p.storage_path
+      and p.task_id = t.id and coalesce(t.month_key, '') < cutoff;
+  delete from "machinery-piecerate".photos p
+    using "machinery-piecerate".tasks t
+    where p.task_id = t.id and coalesce(t.month_key, '') < cutoff;
+  delete from "machinery-piecerate".tasks  where coalesce(month_key, '') < cutoff;
+  delete from "machinery-piecerate".claims where coalesce(month_key, '') < cutoff;
+end
+$fn$;
+
+-- Run it daily if pg_cron is available; ignored (with a notice) if it is not.
+do $$
+begin
+  perform cron.schedule(
+    'machinery-purge-old',
+    '17 3 * * *',
+    'select "machinery-piecerate".purge_old_data();'
+  );
+exception when others then
+  raise notice 'pg_cron unavailable — scheduled purge skipped; the app purges on startup instead.';
+end $$;
 
 -- Tell PostgREST to reload so the new schema/tables are picked up.
 notify pgrst, 'reload schema';

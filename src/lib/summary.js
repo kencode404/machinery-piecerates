@@ -20,6 +20,9 @@ export function buildMonthlySummary(tasks, monthKey) {
   const completed = tasks.filter((t) => t.status === TaskStatus.COMPLETED)
   const open = tasks.filter((t) => t.status === TaskStatus.IN_PROGRESS)
 
+  // Total worked time — summed from each record's duration alone.
+  const totalMinutes = completed.reduce((s, t) => s + (Number(t.durationMinutes) || 0), 0)
+
   // dayKey -> { rateKey -> group }
   const byDay = new Map()
   for (const t of completed) {
@@ -78,6 +81,7 @@ export function buildMonthlySummary(tasks, monthKey) {
     open, // hanging tasks (not in totals)
     openCount: open.length,
     recordCount,
+    totalMinutes,
     monthTotalAmount: round2(monthTotalAmount)
   }
 }

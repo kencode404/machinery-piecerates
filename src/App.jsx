@@ -4,6 +4,7 @@ import Login from './auth/Login.jsx'
 import { Shell } from './components/Shell.jsx'
 import { Spinner } from './components/ui.jsx'
 import { ErrorBoundary } from './components/ErrorBoundary.jsx'
+import { SessionGuard } from './auth/SessionGuard.jsx'
 
 import NewTask from './pages/operator/NewTask.jsx'
 import OpenTasks from './pages/operator/OpenTasks.jsx'
@@ -14,6 +15,9 @@ import AdminRecords from './pages/admin/AdminRecords.jsx'
 import EditTask from './pages/admin/EditTask.jsx'
 import AddTask from './pages/admin/AddTask.jsx'
 import Settings from './pages/admin/Settings.jsx'
+import PayrollReport from './pages/admin/PayrollReport.jsx'
+import ClaimForm from './pages/admin/ClaimForm.jsx'
+import Dashboard from './pages/admin/Dashboard.jsx'
 
 export default function App() {
   const { ready, user } = useAuth()
@@ -28,13 +32,14 @@ export default function App() {
 
   return (
     <ErrorBoundary>
+      <SessionGuard />
       <Routes>
         <Route path="/" element={<RootRedirect />} />
       <Route path="/login" element={user ? <RootRedirect /> : <Login />} />
 
       {/* Operator area */}
       <Route element={<RequireRole role="operator" />}>
-        <Route element={<Shell role="operator" />}>
+        <Route element={<Shell />}>
           <Route path="/open" element={<OpenTasks />} />
           <Route path="/open/new" element={<NewTask />} />
           <Route path="/open/:id" element={<CompleteTask />} />
@@ -42,14 +47,17 @@ export default function App() {
         </Route>
       </Route>
 
-      {/* Admin area */}
-      <Route element={<RequireRole role="admin" />}>
-        <Route element={<Shell role="admin" />}>
+      {/* Manager area — system admin + per-company site admin */}
+      <Route element={<RequireManager />}>
+        <Route element={<Shell />}>
           <Route path="/admin" element={<Navigate to="/admin/records" replace />} />
           <Route path="/admin/records" element={<AdminRecords />} />
           <Route path="/admin/task/:id" element={<EditTask />} />
           <Route path="/admin/add" element={<AddTask />} />
-          <Route path="/admin/settings" element={<Settings />} />
+          <Route path="/admin/payroll" element={<AdminOnly><PayrollReport /></AdminOnly>} />
+          <Route path="/admin/claim/:operatorId" element={<AdminOnly><ClaimForm /></AdminOnly>} />
+          <Route path="/admin/dashboard" element={<AdminOnly><Dashboard /></AdminOnly>} />
+          <Route path="/admin/settings" element={<AdminOnly><Settings /></AdminOnly>} />
         </Route>
       </Route>
 
@@ -62,7 +70,7 @@ export default function App() {
 function RootRedirect() {
   const { user } = useAuth()
   if (!user) return <Navigate to="/login" replace />
-  return <Navigate to={user.role === 'admin' ? '/admin/records' : '/open'} replace />
+  return <Navigate to={user.role === 'operator' ? '/open' : '/admin/records'} replace />
 }
 
 function RequireRole({ role }) {
@@ -70,4 +78,19 @@ function RequireRole({ role }) {
   if (!user) return <Navigate to="/login" replace />
   if (user.role !== role) return <RootRedirect />
   return <Outlet />
+}
+
+// System admin OR a company site admin.
+function RequireManager() {
+  const { user } = useAuth()
+  if (!user) return <Navigate to="/login" replace />
+  if (user.role !== 'admin' && user.role !== 'siteadmin') return <RootRedirect />
+  return <Outlet />
+}
+
+// Settings is system-admin only.
+function AdminOnly({ children }) {
+  const { user } = useAuth()
+  if (user?.role !== 'admin') return <Navigate to="/admin/records" replace />
+  return children
 }

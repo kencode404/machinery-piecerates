@@ -1,15 +1,7 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext.jsx'
 import { useSync } from '../sync/useSync.js'
-import {
-  IconList,
-  IconChart,
-  IconPlus,
-  IconCog,
-  IconLogout,
-  IconCloud,
-  IconCloudOff
-} from './icons.jsx'
+import { IconList, IconChart, IconCog, IconLogout, IconCloud, IconCloudOff, IconReport } from './icons.jsx'
 
 const OPERATOR_NAV = [
   { to: '/open', label: 'Open', Icon: IconList },
@@ -17,15 +9,26 @@ const OPERATOR_NAV = [
 ]
 
 const ADMIN_NAV = [
-  { to: '/admin/records', label: 'Records', Icon: IconChart },
-  { to: '/admin/add', label: 'Add', Icon: IconPlus },
+  { to: '/admin/dashboard', label: 'Dashboard', Icon: IconChart },
+  { to: '/admin/records', label: 'Records', Icon: IconList },
+  { to: '/admin/payroll', label: 'Payroll', Icon: IconReport },
   { to: '/admin/settings', label: 'Settings', Icon: IconCog }
 ]
 
-export function Shell({ role }) {
-  const nav = role === 'admin' ? ADMIN_NAV : OPERATOR_NAV
+const SITEADMIN_NAV = [{ to: '/admin/records', label: 'Records', Icon: IconChart }]
+
+export function Shell() {
+  const { user } = useAuth()
+  const role = user?.role
+  const nav = role === 'admin' ? ADMIN_NAV : role === 'siteadmin' ? SITEADMIN_NAV : OPERATOR_NAV
+  // Payroll + claim form get a wider column on desktop.
+  const { pathname } = useLocation()
+  const wide =
+    pathname.startsWith('/admin/payroll') ||
+    pathname.startsWith('/admin/claim') ||
+    pathname.startsWith('/admin/dashboard')
   return (
-    <div className="mx-auto flex min-h-[100dvh] w-full max-w-app flex-col bg-slate-50">
+    <div className={`mx-auto flex min-h-[100dvh] w-full flex-col ${wide ? 'max-w-app lg:max-w-5xl' : 'max-w-app'}`}>
       <TopBar role={role} />
       <main className="content-pad-bottom flex-1 px-4 pt-3">
         <Outlet />
@@ -39,14 +42,16 @@ function TopBar({ role }) {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   return (
-    <header className="pt-safe sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
+    <header className="pt-safe sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur print:hidden">
       <div className="flex h-14 items-center justify-between px-4">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-slate-800">{user?.name || 'User'}</p>
           <p className="truncate text-[11px] uppercase tracking-wide text-slate-400">
             {role === 'admin'
               ? 'Administrator'
-              : [user?.companyName, user?.machineName].filter(Boolean).join(' · ') || 'Operator'}
+              : role === 'siteadmin'
+                ? `Site admin · ${user?.companyName || ''}`
+                : 'Operator'}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -68,7 +73,8 @@ function TopBar({ role }) {
 }
 
 export function SyncStatus() {
-  const { enabled, online, syncing, pending, lastError } = useSync()
+  const { enabled, online, syncing, pending, pendingTasks, lastError } = useSync()
+  const tasksLabel = `${pendingTasks} ${pendingTasks === 1 ? 'task' : 'tasks'} to sync`
 
   if (!enabled) {
     return (
@@ -82,7 +88,7 @@ export function SyncStatus() {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs text-amber-700">
         <IconCloudOff width={14} height={14} />
-        {pending > 0 ? `${pending} waiting` : 'Offline'}
+        {pendingTasks > 0 ? tasksLabel : 'Offline'}
       </span>
     )
   }
@@ -104,10 +110,19 @@ export function SyncStatus() {
     )
   }
 
+  if (pendingTasks > 0) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs text-amber-700">
+        {tasksLabel}
+      </span>
+    )
+  }
+
+  // Only admin setting changes / deletions left to push.
   if (pending > 0) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs text-amber-700">
-        {pending} to sync
+        Saving changes…
       </span>
     )
   }
@@ -122,7 +137,7 @@ export function SyncStatus() {
 
 function BottomNav({ items }) {
   return (
-    <nav className="pb-safe fixed inset-x-0 bottom-0 z-20 mx-auto max-w-app border-t border-slate-200 bg-white">
+    <nav className="pb-safe fixed inset-x-0 bottom-0 z-20 mx-auto max-w-app border-t border-slate-200 bg-white print:hidden">
       <div className="flex">
         {items.map(({ to, label, Icon }) => (
           <NavLink
