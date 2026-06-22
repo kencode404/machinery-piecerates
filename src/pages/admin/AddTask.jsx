@@ -101,10 +101,15 @@ export default function AddTask() {
     () => (operators || []).find((o) => o.id === f.operatorId) || null,
     [operators, f.operatorId]
   )
-  const opMachines = useMemo(
-    () => (machines || []).filter((m) => m.companyId === selectedOperator?.companyId),
-    [machines, selectedOperator]
-  )
+  // Only the machines ticked for this operator in Settings (their assignment),
+  // active and in their company — the same set the operator sees when completing
+  // their own work, so an admin entry can't use a machine they aren't assigned.
+  const opMachines = useMemo(() => {
+    const ids = new Set(selectedOperator?.machineIds || [])
+    return (machines || []).filter(
+      (m) => m.active && ids.has(m.id) && (!selectedOperator?.companyId || m.companyId === selectedOperator.companyId)
+    )
+  }, [machines, selectedOperator])
   const areas = useLiveQuery(
     () => (selectedOperator?.companyId ? listAreas({ companyId: selectedOperator.companyId }) : Promise.resolve([])),
     [selectedOperator?.companyId],
@@ -259,6 +264,9 @@ export default function AddTask() {
               </option>
             ))}
           </Select>
+          {f.operatorId && opMachines.length === 0 && (
+            <p className="mt-1 text-xs text-amber-600">No machines ticked for this operator — assign machines to them in Settings.</p>
+          )}
         </Field>
       </Card>
 

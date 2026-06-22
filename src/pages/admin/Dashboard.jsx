@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { getYearTasks, listOperators, listCompanies } from '../../db/repo.js'
 import { getMeta } from '../../db/database.js'
@@ -30,6 +30,18 @@ export default function Dashboard() {
   const floorYear = Number(minRetainedMonthKey().slice(0, 4))
   const atFloor = year <= floorYear
   const moneyFmt = (v) => formatMoney(v, currency)
+
+  // One company in view at a time, switched via tabs. Only companies that have
+  // chart data get a tab; keep the active one valid as the year changes.
+  const [activeCompanyId, setActiveCompanyId] = useState('')
+  const companiesWithData = useMemo(() => data.companies.filter((c) => c.hasData), [data])
+  useEffect(() => {
+    if (!companiesWithData.length) return
+    if (!companiesWithData.some((c) => c.id === activeCompanyId)) {
+      setActiveCompanyId(companiesWithData[0].id)
+    }
+  }, [companiesWithData, activeCompanyId])
+  const activeCompany = companiesWithData.find((c) => c.id === activeCompanyId) || companiesWithData[0] || null
 
   return (
     <div className="space-y-3 pb-4">
@@ -63,10 +75,33 @@ export default function Dashboard() {
         <div className="flex justify-center py-16 text-brand">
           <Spinner className="h-7 w-7" />
         </div>
-      ) : data.companies.every((c) => !c.hasData) ? (
+      ) : !companiesWithData.length ? (
         <EmptyState title="No work recorded this year" subtitle="Charts appear once operators have completed tasks." />
       ) : (
-        data.companies.map((company) => <CompanyDashboard key={company.id} company={company} moneyFmt={moneyFmt} />)
+        <>
+          {/* Company tabs — only when there's more than one company with data */}
+          {companiesWithData.length > 1 && (
+            <Card className="overflow-hidden">
+              <div className="flex gap-1 overflow-x-auto overflow-y-hidden border-b border-slate-200 px-2 pt-1">
+                {companiesWithData.map((c) => {
+                  const on = c.id === activeCompany?.id
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => setActiveCompanyId(c.id)}
+                      className={`-mb-px whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
+                        on ? 'border-brand text-brand' : 'border-transparent text-slate-500'
+                      }`}
+                    >
+                      {c.name}
+                    </button>
+                  )
+                })}
+              </div>
+            </Card>
+          )}
+          {activeCompany && <CompanyDashboard key={activeCompany.id} company={activeCompany} moneyFmt={moneyFmt} />}
+        </>
       )}
     </div>
   )

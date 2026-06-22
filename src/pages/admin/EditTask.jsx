@@ -143,10 +143,20 @@ export default function EditTask() {
     [f?.machineId, selectedOperator, rates]
   )
   const rate = useMemo(() => rateOptions.find((r) => r.id === f?.rateId) || null, [rateOptions, f?.rateId])
-  const opMachines = useMemo(
-    () => (machines || []).filter((m) => m.companyId === selectedOperator?.companyId),
-    [machines, selectedOperator]
-  )
+  // Limit to the machines assigned to this operator in Settings (their ticked
+  // machines), in their company — but always keep the machine already on the
+  // record selectable so an edit can't silently drop it.
+  const opMachines = useMemo(() => {
+    const ids = new Set(selectedOperator?.machineIds || [])
+    const list = (machines || []).filter(
+      (m) => ids.has(m.id) && (!selectedOperator?.companyId || m.companyId === selectedOperator.companyId)
+    )
+    if (f?.machineId && !list.some((m) => m.id === f.machineId)) {
+      const cur = (machines || []).find((m) => m.id === f.machineId)
+      if (cur) return [cur, ...list]
+    }
+    return list
+  }, [machines, selectedOperator, f?.machineId])
   const areas = useLiveQuery(
     () =>
       selectedOperator?.companyId
@@ -350,6 +360,9 @@ export default function EditTask() {
               </option>
             ))}
           </Select>
+          {f.operatorId && opMachines.length === 0 && (
+            <p className="mt-1 text-xs text-amber-600">No machines ticked for this operator — assign machines to them in Settings.</p>
+          )}
         </Field>
         <Field label="Status">
           <Select value={f.status} onChange={set('status')}>
