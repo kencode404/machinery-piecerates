@@ -132,7 +132,7 @@ export async function startTask({ session, startTime, notes, startPhoto, workPho
  * Operator completes a hanging task: end-mileage photo + piece rate + quantity
  * + area. Duration is auto-derived from start photo time -> end photo time.
  */
-export async function completeTask(taskId, { endTime, endPhoto, machine, company, pieceRate, quantity, area, notes, endGps }) {
+export async function completeTask(taskId, { endTime, endPhoto, machine, company, pieceRate, quantity, quantityExpr, area, notes, endGps }) {
   const task = await db.tasks.get(taskId)
   if (!task) throw new Error('Task not found')
   await assertMonthUnlocked(task.monthKey)
@@ -160,6 +160,7 @@ export async function completeTask(taskId, { endTime, endPhoto, machine, company
     unit: pieceRate?.unit ?? null,
     unitPrice,
     quantity: qty,
+    quantityExpr: quantityExpr ?? null,
     amount: qty != null && unitPrice != null ? round2(qty * unitPrice) : null,
 
     areaId: area?.id ?? null,
@@ -230,6 +231,7 @@ export async function addManualTask(input) {
     unit: input.pieceRate?.unit ?? null,
     unitPrice,
     quantity: qty,
+    quantityExpr: input.quantityExpr ?? null,
     amount: qty != null && unitPrice != null ? round2(qty * unitPrice) : null,
 
     areaId: input.area?.id ?? null,

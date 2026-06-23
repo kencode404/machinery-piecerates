@@ -105,6 +105,7 @@ create table if not exists "machinery-piecerate".tasks (
   unit text,
   unit_price numeric,
   quantity numeric,
+  quantity_expr text,
   amount numeric,
 
   area_id uuid,
@@ -154,6 +155,7 @@ alter table "machinery-piecerate".tasks add column if not exists company_id uuid
 alter table "machinery-piecerate".tasks add column if not exists company_name text;
 alter table "machinery-piecerate".tasks add column if not exists machine_id uuid;
 alter table "machinery-piecerate".tasks add column if not exists machine_name text;
+alter table "machinery-piecerate".tasks add column if not exists quantity_expr text;
 alter table "machinery-piecerate".piece_rates add column if not exists machine_id uuid;
 alter table "machinery-piecerate".operators add column if not exists machine_ids jsonb not null default '[]'::jsonb;
 alter table "machinery-piecerate".operators add column if not exists company_id uuid;

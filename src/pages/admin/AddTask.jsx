@@ -17,6 +17,8 @@ import { useAuth } from '../../auth/AuthContext.jsx'
 import PageHeader from '../../components/PageHeader.jsx'
 import PhotoCapture from '../../components/PhotoCapture.jsx'
 import { Button, Card, Field, NumberInput, TextInput, TextArea, Select } from '../../components/ui.jsx'
+import { QuantityInput } from '../../components/QuantityInput.jsx'
+import { evalExpr, isExpression } from '../../lib/expr.js'
 
 const dateToISO = (d) => (d ? new Date(`${d}T00:00:00`).toISOString() : null)
 
@@ -127,7 +129,8 @@ export default function AddTask() {
   )
   const rate = useMemo(() => rateOptions.find((r) => r.id === f.rateId) || null, [rateOptions, f.rateId])
   const durationMins = computeDuration(f)
-  const amount = rate && f.quantity !== '' ? Number(f.quantity) * Number(rate.price) : null
+  const qtyNum = evalExpr(f.quantity)
+  const amount = rate && qtyNum != null ? qtyNum * Number(rate.price) : null
 
   // Uploading a photo flips the duration to Start/End mode and fills the time
   // from the photo's EXIF timestamp (its GPS is applied automatically on save).
@@ -160,8 +163,8 @@ export default function AddTask() {
     const machine = (machines || []).find((m) => m.id === f.machineId)
     if (!machine) return setError('Choose a machine.')
     // Piece rate + quantity are optional; if a quantity is typed it must be > 0.
-    if (f.quantity !== '' && Number(f.quantity) <= 0) {
-      return setError('Quantity must be more than 0.')
+    if (f.quantity.trim() !== '' && !(evalExpr(f.quantity) > 0)) {
+      return setError('Quantity must be a number or sum greater than 0 (e.g. 5+5+10-6).')
     }
 
     let startTime
@@ -210,7 +213,8 @@ export default function AddTask() {
         startGps: geoFor(f.startLoc, startPhoto?.gps || workPhoto?.gps),
         endGps: geoFor(f.endLoc, endPhoto?.gps),
         pieceRate: rate,
-        quantity: f.quantity,
+        quantity: qtyNum,
+        quantityExpr: isExpression(f.quantity) ? f.quantity.trim() : null,
         area,
         notes: f.notes,
         startPhoto,
@@ -352,8 +356,8 @@ export default function AddTask() {
             ))}
           </Select>
         </Field>
-        <Field label={`Quantity${rate ? ` (${rate.unit})` : ''}`} hint="Optional">
-          <NumberInput value={f.quantity} onChange={set('quantity')} />
+        <Field label={`Quantity${rate ? ` (${rate.unit})` : ''}`} hint="Optional — a number or a sum like 5+5+10-6">
+          <QuantityInput value={f.quantity} onChange={(v) => setF((p) => ({ ...p, quantity: v }))} />
         </Field>
         <Field label="Area">
           <Select value={f.areaId} onChange={set('areaId')}>

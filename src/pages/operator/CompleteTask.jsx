@@ -15,6 +15,8 @@ import {
 import { TaskStatus, GpsSource } from '../../db/models.js'
 import { minutesBetween, formatHours } from '../../lib/duration.js'
 import { timeOf, dateTimeOf, formatMoney, toLocalInput, fromLocalInput, formatLatLng, parseLatLng } from '../../lib/format.js'
+import { QuantityInput } from '../../components/QuantityInput.jsx'
+import { evalExpr, isExpression } from '../../lib/expr.js'
 
 const geoFor = (loc, fallback) => {
   const { lat, lng } = parseLatLng(loc)
@@ -87,7 +89,8 @@ export default function CompleteTask() {
 
   const endISO = fromLocalInput(endTime)
   const durationMins = task ? minutesBetween(task.startTime, endISO) : null
-  const amount = rate && quantity !== '' ? Number(quantity) * Number(rate.price) : null
+  const qtyNum = evalExpr(quantity)
+  const amount = rate && qtyNum != null ? qtyNum * Number(rate.price) : null
 
   if (task === undefined) {
     return (
@@ -122,6 +125,10 @@ export default function CompleteTask() {
       setError('The end time is before the start time. Adjust the end time.')
       return
     }
+    if (quantity.trim() !== '' && qtyNum == null) {
+      setError('Quantity must be a number or a sum like 5+5+10-6.')
+      return
+    }
     submitting.current = true
     setBusy(true)
     try {
@@ -132,7 +139,8 @@ export default function CompleteTask() {
         machine,
         company,
         pieceRate: rate,
-        quantity,
+        quantity: qtyNum,
+        quantityExpr: isExpression(quantity) ? quantity.trim() : null,
         area,
         notes
       })
@@ -231,8 +239,8 @@ export default function CompleteTask() {
             )}
           </Field>
 
-          <Field label={`Quantity${rate ? ` (${rate.unit})` : ''}`} hint="Optional — units of work done">
-            <NumberInput value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="e.g. 3" />
+          <Field label={`Quantity${rate ? ` (${rate.unit})` : ''}`} hint="Optional — a number or a sum like 5+5+10-6">
+            <QuantityInput value={quantity} onChange={setQuantity} placeholder="e.g. 3 or 5+5+10" />
           </Field>
 
           <Field label="Area" required>

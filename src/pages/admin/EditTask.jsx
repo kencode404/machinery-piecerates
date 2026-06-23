@@ -23,6 +23,8 @@ import PageHeader from '../../components/PageHeader.jsx'
 import { PhotoById, Lightbox } from '../../components/PhotoThumb.jsx'
 import PhotoCapture from '../../components/PhotoCapture.jsx'
 import { Button, Card, Field, NumberInput, TextInput, TextArea, Select, Spinner, Badge } from '../../components/ui.jsx'
+import { QuantityInput } from '../../components/QuantityInput.jsx'
+import { evalExpr, isExpression } from '../../lib/expr.js'
 import { IconTrash, IconLock } from '../../components/icons.jsx'
 
 const DUR_MODES = [
@@ -97,7 +99,7 @@ export default function EditTask() {
         endMeter: task.endMileage ?? '',
         hours: task.durationMinutes != null ? String(+(task.durationMinutes / 60).toFixed(2)) : '',
         rateId: task.pieceRateId || (task.pieceRateName === HOURLY_RATE_NAME ? KERJA_JAM_ID : ''),
-        quantity: task.quantity ?? '',
+        quantity: task.quantityExpr ?? (task.quantity != null ? String(task.quantity) : ''),
         areaId: task.areaId || '',
         notes: task.notes || ''
       })
@@ -166,7 +168,8 @@ export default function EditTask() {
     []
   )
   const durationMins = f ? computeDur(f) : null
-  const amount = rate && f?.quantity !== '' ? Number(f.quantity) * Number(rate.price) : null
+  const qtyNum = evalExpr(f?.quantity)
+  const amount = rate && qtyNum != null ? qtyNum * Number(rate.price) : null
 
   if (task === undefined || !f) {
     return (
@@ -238,8 +241,8 @@ export default function EditTask() {
       if (durationMinutes == null) {
         return setError('Enter the duration (end time, hour meter, or hours).')
       }
-      if (f.quantity !== '' && Number(f.quantity) <= 0) {
-        return setError('Quantity must be more than 0.')
+      if (f.quantity.trim() !== '' && !(evalExpr(f.quantity) > 0)) {
+        return setError('Quantity must be a number or sum greater than 0 (e.g. 5+5+10-6).')
       }
     }
 
@@ -262,7 +265,8 @@ export default function EditTask() {
       pieceRateName: rate?.name ?? null,
       unit: rate?.unit ?? null,
       unitPrice: rate ? Number(rate.price) : null,
-      quantity: f.quantity === '' ? null : Number(f.quantity),
+      quantity: evalExpr(f.quantity),
+      quantityExpr: isExpression(f.quantity) ? f.quantity.trim() : null,
       areaId: area?.id ?? null,
       areaName: area?.name ?? null,
       notes: f.notes
@@ -455,8 +459,8 @@ export default function EditTask() {
             ))}
           </Select>
         </Field>
-        <Field label={`Quantity${rate ? ` (${rate.unit})` : ''}`}>
-          <NumberInput value={f.quantity} onChange={set('quantity')} />
+        <Field label={`Quantity${rate ? ` (${rate.unit})` : ''}`} hint="A number or a sum like 5+5+10-6">
+          <QuantityInput value={f.quantity} onChange={(v) => setF((p) => ({ ...p, quantity: v }))} />
         </Field>
         <Field label="Area">
           <Select value={f.areaId} onChange={set('areaId')}>

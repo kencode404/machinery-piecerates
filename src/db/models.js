@@ -121,6 +121,7 @@ export const HOURLY_RATE_UNIT = 'jam'
  * @property {string|null} unit          - snapshot
  * @property {number|null} unitPrice     - snapshot (price per unit)
  * @property {number|null} quantity      - units of work done
+ * @property {string|null} [quantityExpr] - raw formula entered (e.g. "5+5+10-6"), if any
  * @property {number|null} amount        - quantity * unitPrice (snapshot)
  *
  * @property {string|null} areaId
