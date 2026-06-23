@@ -1,6 +1,7 @@
 import Dexie from 'dexie'
 import { uuid } from '../lib/uuid.js'
 import { hashSecret } from '../lib/crypto.js'
+import { supabaseEnabled } from '../sync/supabase.js'
 
 // IndexedDB store. Holds ALL data locally so the app works fully offline.
 // Photos are kept as Blobs inside the `photos` store (IndexedDB handles large
@@ -85,6 +86,18 @@ export async function seedIfEmpty() {
   // Versioned key so later model changes also seed/migrate on already-installed
   // devices.
   if (await getMeta('seeded.v7')) return
+
+  // Currency default is fine to set everywhere.
+  if ((await getMeta('currency')) == null) await setMeta('currency', 'RM')
+
+  // When connected to Supabase, NEVER seed demo data — the real data syncs down
+  // from the server. Seeding here would create a brand-new "Demo Company" on
+  // every fresh device/browser and push duplicates up. The demo data exists only
+  // to make the fully-offline / local-only build usable out of the box.
+  if (supabaseEnabled) {
+    await setMeta('seeded.v7', true)
+    return
+  }
 
   const now = new Date().toISOString()
   const demoPin = await hashSecret('1234')
