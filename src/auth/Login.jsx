@@ -4,17 +4,7 @@ import { Button, Card, Field, TextInput } from '../components/ui.jsx'
 
 // Single-screen auth flow with a few small modes.
 export default function Login() {
-  const auth = useAuth()
-  const [mode, setMode] = useState('home') // home | operator | admin | setup | forgot | recovery
-  const [recoveryCode, setRecoveryCode] = useState('')
-  const [pendingPassword, setPendingPassword] = useState('')
-
-  // After setup we show the recovery code, then log the admin in.
-  function onSetupDone(code, password) {
-    setRecoveryCode(code)
-    setPendingPassword(password)
-    setMode('recovery')
-  }
+  const [mode, setMode] = useState('home') // home | operator | siteadmin | admin | forgot
 
   return (
     <div className="min-h-full px-5 pt-safe">
@@ -28,37 +18,8 @@ export default function Login() {
         {mode === 'home' && <Home onPick={setMode} />}
         {mode === 'operator' && <OperatorLogin kind="operator" onBack={() => setMode('home')} />}
         {mode === 'siteadmin' && <OperatorLogin kind="siteadmin" onBack={() => setMode('home')} />}
-        {mode === 'admin' && (
-          <AdminLogin
-            onBack={() => setMode('home')}
-            onForgot={() => setMode('forgot')}
-            onNeedSetup={() => setMode('setup')}
-            configured={auth.adminConfigured}
-          />
-        )}
-        {mode === 'setup' && <AdminSetup onBack={() => setMode('admin')} onDone={onSetupDone} />}
-        {mode === 'forgot' && (
-          <ForgotPassword
-            onBack={() => setMode('admin')}
-            onReset={(code) => {
-              setRecoveryCode(code)
-              setPendingPassword('')
-              setMode('recovery')
-            }}
-          />
-        )}
-        {mode === 'recovery' && (
-          <RecoveryCodeScreen
-            code={recoveryCode}
-            onContinue={async () => {
-              if (pendingPassword) {
-                await auth.loginAdmin(pendingPassword) // setup flow -> straight in
-              } else {
-                setMode('admin') // reset flow -> sign in with new password
-              }
-            }}
-          />
-        )}
+        {mode === 'admin' && <AdminLogin onBack={() => setMode('home')} onForgot={() => setMode('forgot')} />}
+        {mode === 'forgot' && <ForgotPassword onBack={() => setMode('admin')} />}
       </div>
     </div>
   )
@@ -139,32 +100,20 @@ function OperatorLogin({ onBack, kind }) {
   )
 }
 
-function AdminLogin({ onBack, onForgot, onNeedSetup, configured }) {
+// HQ admin = a Supabase Auth account (email + password), shared across devices.
+function AdminLogin({ onBack, onForgot }) {
   const auth = useAuth()
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-
-  if (!configured) {
-    return (
-      <Card className="p-4 text-center">
-        <p className="text-sm text-slate-600">No admin has been set up on this device yet.</p>
-        <Button full className="mt-4" onClick={onNeedSetup}>
-          Set up admin
-        </Button>
-        <Button variant="ghost" full className="mt-2" onClick={onBack}>
-          ← Back
-        </Button>
-      </Card>
-    )
-  }
 
   async function submit(e) {
     e.preventDefault()
     setError('')
     setBusy(true)
     try {
-      await auth.loginAdmin(password)
+      await auth.loginAdmin(email, password)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -176,16 +125,27 @@ function AdminLogin({ onBack, onForgot, onNeedSetup, configured }) {
     <Card className="p-4">
       <form onSubmit={submit} className="space-y-4">
         <p className="text-sm font-semibold text-slate-700">HQ admin sign in</p>
-        <Field label="HQ admin password" error={error}>
+        <Field label="Email">
+          <TextInput
+            type="email"
+            autoFocus
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="admin@example.com"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+          />
+        </Field>
+        <Field label="Password" error={error}>
           <TextInput
             type="password"
-            autoFocus
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Enter HQ admin password"
           />
         </Field>
-        <Button full type="submit" disabled={busy || !password}>
+        <Button full type="submit" disabled={busy || !email.trim() || !password}>
           {busy ? 'Checking…' : 'Sign in as HQ admin'}
         </Button>
         <div className="flex items-center justify-between">
@@ -201,147 +161,64 @@ function AdminLogin({ onBack, onForgot, onNeedSetup, configured }) {
   )
 }
 
-function AdminSetup({ onBack, onDone }) {
+function ForgotPassword({ onBack }) {
   const auth = useAuth()
-  const [pw, setPw] = useState('')
-  const [pw2, setPw2] = useState('')
+  const [email, setEmail] = useState('')
+  const [sent, setSent] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
   async function submit(e) {
     e.preventDefault()
     setError('')
-    if (pw.length < 6) return setError('Use at least 6 characters.')
-    if (pw !== pw2) return setError('Passwords do not match.')
     setBusy(true)
     try {
-      const code = await auth.setupAdmin(pw)
-      onDone(code, pw)
+      await auth.sendAdminReset(email)
+      setSent(true)
     } catch (err) {
       setError(err.message)
+    } finally {
       setBusy(false)
     }
   }
 
-  return (
-    <Card className="p-4">
-      <form onSubmit={submit} className="space-y-4">
-        <p className="text-sm text-slate-600">Create the admin password for this app.</p>
-        <Field label="New admin password" required>
-          <TextInput type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoFocus />
-        </Field>
-        <Field label="Confirm password" required error={error}>
-          <TextInput type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} />
-        </Field>
-        <Button full type="submit" disabled={busy}>
-          {busy ? 'Saving…' : 'Create admin'}
-        </Button>
-        <Button type="button" variant="ghost" full onClick={onBack}>
-          ← Back
-        </Button>
-      </form>
-    </Card>
-  )
-}
-
-function ForgotPassword({ onBack, onReset }) {
-  const auth = useAuth()
-  const [code, setCode] = useState('')
-  const [pw, setPw] = useState('')
-  const [pw2, setPw2] = useState('')
-  const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
-
-  async function submit(e) {
-    e.preventDefault()
-    setError('')
-    if (pw.length < 6) return setError('Use at least 6 characters.')
-    if (pw !== pw2) return setError('Passwords do not match.')
-    setBusy(true)
-    try {
-      const newCode = await auth.resetAdminPassword(code, pw)
-      onReset(newCode)
-    } catch (err) {
-      setError(err.message)
-      setBusy(false)
-    }
-  }
-
-  return (
-    <Card className="p-4">
-      <form onSubmit={submit} className="space-y-4">
+  if (sent) {
+    return (
+      <Card className="p-4 text-center">
         <p className="text-sm text-slate-600">
-          Enter your recovery code (shown when admin was set up) and choose a new password.
+          If that email has an HQ admin account, a password-reset link is on its way (check spam). You can also reset it
+          from the Supabase dashboard → Authentication → Users.
         </p>
-        <Field label="Recovery code" required>
+        <Button full className="mt-4" onClick={onBack}>
+          ← Back to sign in
+        </Button>
+      </Card>
+    )
+  }
+
+  return (
+    <Card className="p-4">
+      <form onSubmit={submit} className="space-y-4">
+        <p className="text-sm text-slate-600">Enter the HQ admin email to receive a password-reset link.</p>
+        <Field label="Email" error={error}>
           <TextInput
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            placeholder="XXXX-XXXX-XXXX"
-            autoCapitalize="characters"
-            className="uppercase tracking-widest"
+            type="email"
+            autoFocus
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="admin@example.com"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
           />
         </Field>
-        <Field label="New password" required>
-          <TextInput type="password" value={pw} onChange={(e) => setPw(e.target.value)} />
-        </Field>
-        <Field label="Confirm new password" required error={error}>
-          <TextInput type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} />
-        </Field>
-        <Button full type="submit" disabled={busy}>
-          {busy ? 'Resetting…' : 'Reset password'}
+        <Button full type="submit" disabled={busy || !email.trim()}>
+          {busy ? 'Sending…' : 'Send reset link'}
         </Button>
         <Button type="button" variant="ghost" full onClick={onBack}>
           ← Back
         </Button>
       </form>
-    </Card>
-  )
-}
-
-function RecoveryCodeScreen({ code, onContinue }) {
-  const [saved, setSaved] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [copied, setCopied] = useState(false)
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(code)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    } catch {
-      /* clipboard blocked — user can read it */
-    }
-  }
-
-  return (
-    <Card className="p-5 text-center">
-      <h2 className="text-lg font-bold text-slate-800">Save your recovery code</h2>
-      <p className="mt-1 text-sm text-slate-500">
-        This is the ONLY way to reset the admin password if you forget it. Write it down and keep it
-        safe — it won&apos;t be shown again.
-      </p>
-      <div className="my-5 select-all rounded-xl border-2 border-dashed border-brand bg-brand-light px-4 py-4 text-2xl font-bold tracking-widest text-brand-dark">
-        {code}
-      </div>
-      <Button variant="secondary" full onClick={copy}>
-        {copied ? 'Copied ✓' : 'Copy code'}
-      </Button>
-      <label className="mt-4 flex items-center justify-center gap-2 text-sm text-slate-600">
-        <input type="checkbox" checked={saved} onChange={(e) => setSaved(e.target.checked)} />
-        I have written it down somewhere safe
-      </label>
-      <Button
-        full
-        className="mt-4"
-        disabled={!saved || busy}
-        onClick={async () => {
-          setBusy(true)
-          await onContinue()
-        }}
-      >
-        {busy ? 'Please wait…' : 'Continue'}
-      </Button>
     </Card>
   )
 }

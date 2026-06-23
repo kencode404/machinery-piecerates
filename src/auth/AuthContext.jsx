@@ -1,16 +1,21 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
-import { db, getMeta, setMeta } from '../db/database.js'
+import { db } from '../db/database.js'
 import { Role } from '../db/models.js'
-import { hashSecret, verifySecret, randomCode } from '../lib/crypto.js'
+import { verifySecret } from '../lib/crypto.js'
+import { supabase, supabaseEnabled } from '../sync/supabase.js'
 
+// Operator / site-admin sessions are local (offline-first). The HQ admin is a
+// real Supabase Auth account, so one email + password works on every device.
 const SESSION_KEY = 'mpr.session'
 const AuthContext = createContext(null)
 
-const normCode = (s) => (s || '').trim().toUpperCase()
+// Build the HQ-admin user object from a Supabase Auth session.
+const adminFrom = (session) =>
+  session?.user ? { role: Role.ADMIN, name: 'Admin', email: session.user.email || '' } : null
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null)
-  const [adminConfigured, setAdminConfigured] = useState(false)
+  const [adminUser, setAdminUser] = useState(null) // from Supabase Auth
+  const [opUser, setOpUser] = useState(null) // from a local operator/site-admin session
   const [ready, setReady] = useState(false)
   // Last operator selection on this device (to prefill the login form).
   const [lastOperator] = useState(() => {
@@ -21,35 +26,48 @@ export function AuthProvider({ children }) {
     }
   })
 
+  const user = adminUser || opUser // HQ admin takes precedence if both exist
+
+  // Restore a local operator/site-admin session once on mount.
   useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      const admin = await getMeta('adminAuth')
-      if (cancelled) return
-      setAdminConfigured(Boolean(admin?.passwordHash))
-      try {
-        const raw = localStorage.getItem(SESSION_KEY)
-        if (raw) {
-          const u = JSON.parse(raw)
-          // Drop stale operator/site-admin sessions that predate the account model.
-          if ((u?.role === Role.OPERATOR || u?.role === Role.SITEADMIN) && !u.operatorId) {
-            localStorage.removeItem(SESSION_KEY)
-          } else {
-            setUser(u)
-          }
-        }
-      } catch {
-        /* ignore corrupt session */
+    try {
+      const raw = localStorage.getItem(SESSION_KEY)
+      if (raw) {
+        const u = JSON.parse(raw)
+        if ((u?.role === Role.OPERATOR || u?.role === Role.SITEADMIN) && u.operatorId) setOpUser(u)
+        else localStorage.removeItem(SESSION_KEY)
       }
-      setReady(true)
-    })()
-    return () => {
-      cancelled = true
+    } catch {
+      /* ignore corrupt session */
     }
   }, [])
 
-  const persist = useCallback((u) => {
-    setUser(u)
+  // Track the HQ-admin Supabase Auth session (restore on load + live updates).
+  useEffect(() => {
+    if (!supabaseEnabled) {
+      setReady(true)
+      return
+    }
+    let active = true
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (!active) return
+        setAdminUser(adminFrom(data?.session))
+        setReady(true)
+      })
+      .catch(() => active && setReady(true))
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAdminUser(adminFrom(session))
+    })
+    return () => {
+      active = false
+      sub?.subscription?.unsubscribe?.()
+    }
+  }, [])
+
+  const persistOp = useCallback((u) => {
+    setOpUser(u)
     try {
       if (u) localStorage.setItem(SESSION_KEY, JSON.stringify(u))
       else localStorage.removeItem(SESSION_KEY)
@@ -58,31 +76,19 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
-  // First-time admin setup: choose a password, receive a recovery code (once).
-  // Does NOT log in — the caller shows the recovery code first, then logs in.
-  const setupAdmin = useCallback(async (password) => {
-    const recoveryCode = randomCode()
-    const [passwordHash, recoveryHash] = await Promise.all([
-      hashSecret(password),
-      hashSecret(normCode(recoveryCode))
-    ])
-    await setMeta('adminAuth', { passwordHash, recoveryHash, updatedAt: new Date().toISOString() })
-    setAdminConfigured(true)
-    return recoveryCode
+  // HQ admin: a real Supabase Auth account (email + password). It's a server
+  // sign-in, so it needs a connection; the session then persists + auto-refreshes.
+  const loginAdmin = useCallback(async (email, password) => {
+    if (!supabaseEnabled) throw new Error('HQ admin needs an internet connection to sign in.')
+    const { error } = await supabase.auth.signInWithPassword({
+      email: (email || '').trim().toLowerCase(),
+      password
+    })
+    if (error) throw new Error(/invalid/i.test(error.message || '') ? 'Wrong email or password.' : error.message)
+    // onAuthStateChange sets the admin user.
   }, [])
 
-  const loginAdmin = useCallback(
-    async (password) => {
-      const admin = await getMeta('adminAuth')
-      if (!admin?.passwordHash) throw new Error('Admin is not set up yet.')
-      if (!(await verifySecret(password, admin.passwordHash))) throw new Error('Wrong password.')
-      persist({ role: Role.ADMIN, name: 'Admin' })
-    },
-    [persist]
-  )
-
-  // Operator login: type your username (case-insensitive) + PIN. The list of
-  // operators/companies is never shown to operators.
+  // Operator / site-admin login: username (case-insensitive) + PIN, fully local.
   const loginOperator = useCallback(
     async ({ username, pin, expect }) => {
       const uname = (username || '').trim().toLowerCase()
@@ -100,7 +106,7 @@ export function AuthProvider({ children }) {
         throw new Error('This is a site-admin account. Use the Site Admin login.')
       }
       const company = op.companyId ? await db.companies.get(op.companyId) : null
-      const session = {
+      persistOp({
         role: op.isSiteAdmin ? Role.SITEADMIN : Role.OPERATOR,
         operatorId: op.id,
         operatorName: op.name,
@@ -108,63 +114,50 @@ export function AuthProvider({ children }) {
         companyName: company?.name || '',
         name: op.name, // shown in the top bar
         loginAt: new Date().toISOString() // used by the force-logout check
-      }
-      persist(session)
+      })
     },
-    [persist]
+    [persistOp]
   )
 
-  // Forgot admin password -> verify recovery code -> set new password.
-  // Returns a freshly generated recovery code (the old one stops working).
-  const resetAdminPassword = useCallback(async (recoveryCode, newPassword) => {
-    const admin = await getMeta('adminAuth')
-    if (!admin?.recoveryHash) throw new Error('No recovery code is on file for this device.')
-    if (!(await verifySecret(normCode(recoveryCode), admin.recoveryHash))) {
-      throw new Error('Recovery code is incorrect.')
+  // Change the signed-in HQ admin's password (Supabase Auth — applies everywhere).
+  const changeAdminPassword = useCallback(async (newPassword) => {
+    if (!supabaseEnabled) throw new Error('Connect to the internet to change the password.')
+    const { error } = await supabase.auth.updateUser({ password: newPassword })
+    if (error) throw new Error(error.message)
+  }, [])
+
+  // Email the HQ admin a password-reset link (Supabase Auth).
+  const sendAdminReset = useCallback(async (email) => {
+    if (!supabaseEnabled) throw new Error('Connect to the internet to reset the password.')
+    const { error } = await supabase.auth.resetPasswordForEmail((email || '').trim().toLowerCase(), {
+      redirectTo: window.location.origin + import.meta.env.BASE_URL
+    })
+    if (error) throw new Error(error.message)
+  }, [])
+
+  const logout = useCallback(async () => {
+    if (adminUser && supabaseEnabled) {
+      try {
+        await supabase.auth.signOut()
+      } catch {
+        /* ignore */
+      }
+      setAdminUser(null)
     }
-    const newRecovery = randomCode()
-    const [passwordHash, recoveryHash] = await Promise.all([
-      hashSecret(newPassword),
-      hashSecret(normCode(newRecovery))
-    ])
-    await setMeta('adminAuth', { ...admin, passwordHash, recoveryHash, updatedAt: new Date().toISOString() })
-    return newRecovery
-  }, [])
-
-  const changeAdminPassword = useCallback(async (oldPassword, newPassword) => {
-    const admin = await getMeta('adminAuth')
-    if (!(await verifySecret(oldPassword, admin?.passwordHash))) {
-      throw new Error('Current password is wrong.')
-    }
-    const passwordHash = await hashSecret(newPassword)
-    await setMeta('adminAuth', { ...admin, passwordHash, updatedAt: new Date().toISOString() })
-  }, [])
-
-  const regenerateRecovery = useCallback(async () => {
-    const admin = await getMeta('adminAuth')
-    if (!admin?.passwordHash) throw new Error('Admin is not set up yet.')
-    const newRecovery = randomCode()
-    const recoveryHash = await hashSecret(normCode(newRecovery))
-    await setMeta('adminAuth', { ...admin, recoveryHash, updatedAt: new Date().toISOString() })
-    return newRecovery
-  }, [])
-
-  const logout = useCallback(() => persist(null), [persist])
+    if (opUser) persistOp(null)
+  }, [adminUser, opUser, persistOp])
 
   const value = {
     user,
     ready,
-    adminConfigured,
     lastOperator,
     isAdmin: user?.role === Role.ADMIN,
     isSiteAdmin: user?.role === Role.SITEADMIN,
     isOperator: user?.role === Role.OPERATOR,
-    setupAdmin,
     loginAdmin,
     loginOperator,
-    resetAdminPassword,
     changeAdminPassword,
-    regenerateRecovery,
+    sendAdminReset,
     logout
   }
 

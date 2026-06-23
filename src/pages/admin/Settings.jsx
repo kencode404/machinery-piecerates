@@ -671,13 +671,11 @@ function RateEditor({ editing, machineId, onClose }) {
 // ---------------------------------------------------------------------------
 
 function SecuritySection() {
-  const { changeAdminPassword, regenerateRecovery } = useAuth()
-  const [old, setOld] = useState('')
+  const { changeAdminPassword } = useAuth()
   const [pw, setPw] = useState('')
   const [pw2, setPw2] = useState('')
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
-  const [newCode, setNewCode] = useState('')
   const [open, setOpen] = useState(false)
 
   async function change() {
@@ -686,18 +684,13 @@ function SecuritySection() {
     if (pw.length < 6) return setErr('New password must be at least 6 characters.')
     if (pw !== pw2) return setErr('New passwords do not match.')
     try {
-      await changeAdminPassword(old, pw)
-      setOld('')
+      await changeAdminPassword(pw)
       setPw('')
       setPw2('')
       setMsg('Password changed.')
     } catch (e) {
       setErr(e.message)
     }
-  }
-  async function regen() {
-    if (!confirm('Generate a new recovery code? The old code will stop working.')) return
-    setNewCode(await regenerateRecovery())
   }
 
   return (
@@ -708,10 +701,10 @@ function SecuritySection() {
       </button>
       {open && (
         <div className="space-y-3 border-t border-slate-100 p-4">
-          <p className="text-sm font-medium text-slate-600">Change admin password</p>
-          <Field label="Current password">
-            <TextInput type="password" value={old} onChange={(e) => setOld(e.target.value)} />
-          </Field>
+          <p className="text-sm font-medium text-slate-600">Change HQ admin password</p>
+          <p className="text-xs text-slate-400">
+            This is your Supabase Auth account — the new password works on every device.
+          </p>
           <Field label="New password">
             <TextInput type="password" value={pw} onChange={(e) => setPw(e.target.value)} />
           </Field>
@@ -720,27 +713,8 @@ function SecuritySection() {
           </Field>
           {msg && <p className="text-sm text-green-600">{msg}</p>}
           <Button onClick={change}>Change password</Button>
-
-          <hr className="my-2 border-slate-100" />
-          <p className="text-sm font-medium text-slate-600">Recovery code</p>
-          <p className="text-xs text-slate-400">
-            Used to reset the admin password if forgotten. The current code can&apos;t be shown again — generate a new one if lost.
-          </p>
-          <Button variant="secondary" onClick={regen}>
-            Generate new recovery code
-          </Button>
         </div>
       )}
-
-      <Modal open={!!newCode} onClose={() => setNewCode('')} title="New recovery code">
-        <p className="text-sm text-slate-500">Write this down and keep it safe. It won&apos;t be shown again.</p>
-        <div className="my-4 select-all rounded-xl border-2 border-dashed border-brand bg-brand-light px-4 py-4 text-center text-2xl font-bold tracking-widest text-brand-dark">
-          {newCode}
-        </div>
-        <Button full onClick={() => setNewCode('')}>
-          Done
-        </Button>
-      </Modal>
     </Card>
   )
 }
