@@ -126,30 +126,36 @@ export function buildDashboard({ tasks = [], operators = [], companies = [], yea
       .sort((a, b) => (a.key === 'road-drain' ? -1 : b.key === 'road-drain' ? 1 : a.label.localeCompare(b.label)))
 
     // ---- 2. Salary: new (piece) vs old (hourly) per operator ----
+    // New = piece-rate work + basic salary + phone allowance — identical to the
+    // claim form's Bahagian A. Old = rounded hours × hourly rate + basic salary
+    // (no allowance). Basic/allowance apply per month that has work.
     const salaryByOperator = ops
       .map((op) => {
         const list = tasksByOp.get(op.id) || []
         if (!list.length) return null
-        const newVals = empty12()
+        const work = empty12() // piece-rate earnings per month
         const hrs = empty12()
         for (const t of list) {
           const mi = monthIndex(t.monthKey)
           if (mi < 0 || mi > 11) continue
-          newVals[mi] = (newVals[mi] || 0) + (Number(t.amount) || 0)
+          work[mi] = (work[mi] || 0) + (Number(t.amount) || 0)
           hrs[mi] = (hrs[mi] || 0) + hoursOf(t.durationMinutes)
         }
-        // Old system = hourly rate × hours worked. The month's total hours are
-        // rounded to 1 decimal (same as the displayed total) before applying the
-        // rate — e.g. 26.07 h → 26.1 h × RM9 = RM234.90.
         const rate = Number(op.op.hourlyRate)
         const hasOld = Number.isFinite(rate) && rate > 0
-        const oldVals = hrs.map((h) => (hasOld ? round2(round1(h) * rate) : null))
+        const basic = Number(op.op.basicSalary) || 0
+        const allowance = Number(op.op.phoneAllowance) || 0
+        // New = piece work + basic + phone allowance (same as the claim form).
+        const newVals = work.map((w) => (w != null ? round2(w + basic + allowance) : 0))
+        // Old = rounded hours × hourly rate + basic. Hours are rounded to 1
+        // decimal first (same as the displayed total) — e.g. 26.07 h → 26.1 h × RM9.
+        const oldVals = hrs.map((h) => (hasOld && h != null ? round2(round1(h) * rate + basic) : null))
         return {
           operatorId: op.id,
           name: op.name,
           hasOld,
           series: [
-            { name: 'New (piece rate)', color: '#16a34a', values: newVals.map((v) => (v == null ? 0 : round2(v))) },
+            { name: 'New (piece rate)', color: '#16a34a', values: newVals },
             { name: 'Old (hourly)', color: '#d97706', values: oldVals }
           ]
         }
