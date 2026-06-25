@@ -1,10 +1,17 @@
 import { useState } from 'react'
+import { Navigate } from 'react-router-dom'
 import { useAuth } from './AuthContext.jsx'
 import { Button, Card, Field, TextInput } from '../components/ui.jsx'
 
 // Single-screen auth flow with a few small modes.
 export default function Login() {
+  const { user } = useAuth()
   const [mode, setMode] = useState('home') // home | operator | siteadmin | admin | forgot
+
+  // Already signed in on this device → skip the login screen, go straight in.
+  if (user) {
+    return <Navigate to={user.role === 'operator' ? '/open' : '/admin/records'} replace />
+  }
 
   return (
     <div className="min-h-full px-5 pt-safe">
