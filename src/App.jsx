@@ -18,6 +18,7 @@ import Settings from './pages/admin/Settings.jsx'
 import PayrollReport from './pages/admin/PayrollReport.jsx'
 import ClaimForm from './pages/admin/ClaimForm.jsx'
 import Dashboard from './pages/admin/Dashboard.jsx'
+import Worklog from './pages/admin/Worklog.jsx'
 
 export default function App() {
   const { ready, user } = useAuth()
@@ -54,6 +55,7 @@ export default function App() {
           <Route path="/admin/records" element={<AdminRecords />} />
           <Route path="/admin/task/:id" element={<EditTask />} />
           <Route path="/admin/add" element={<AddTask />} />
+          <Route path="/admin/worklog/:operatorId" element={<Worklog />} />
           <Route path="/admin/payroll" element={<AdminOnly><PayrollReport /></AdminOnly>} />
           <Route path="/admin/claim/:operatorId" element={<AdminOnly><ClaimForm /></AdminOnly>} />
           <Route path="/admin/dashboard" element={<AdminOnly><Dashboard /></AdminOnly>} />

@@ -7,7 +7,7 @@ import { monthKeyOf } from '../../lib/format.js'
 import { useAuth } from '../../auth/AuthContext.jsx'
 import MonthSummary from '../../components/MonthSummary.jsx'
 import { Button, Card, Select, EmptyState } from '../../components/ui.jsx'
-import { IconPlus, IconLock } from '../../components/icons.jsx'
+import { IconPlus, IconLock, IconReport } from '../../components/icons.jsx'
 
 // Remember the last operator tab on THIS device (per-browser, not synced), so a
 // fresh visit / reload of Records reopens the operator the admin was working on
@@ -160,15 +160,19 @@ export default function AdminRecords() {
 
       {activeOpId ? (
         <>
-          {locked ? (
-            <div className="flex items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700">
-              <IconLock width={16} height={16} /> This month is locked — records can’t be added or edited.
-            </div>
-          ) : (
-            <div className="flex justify-end">
+          <div className="flex items-center justify-end gap-2">
+            <Button size="sm" variant="secondary" onClick={() => navigate(`/admin/worklog/${activeOpId}?month=${monthKey}`)}>
+              <IconReport width={16} height={16} /> Daily log
+            </Button>
+            {!locked && (
               <Button size="sm" onClick={() => navigate(`/admin/add?operator=${activeOpId}&month=${monthKey}`)}>
                 <IconPlus width={18} height={18} /> Add work
               </Button>
+            )}
+          </div>
+          {locked && (
+            <div className="flex items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700">
+              <IconLock width={16} height={16} /> This month is locked — records can’t be added or edited.
             </div>
           )}
           <MonthSummary
