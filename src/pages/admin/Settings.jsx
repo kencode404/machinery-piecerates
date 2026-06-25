@@ -333,44 +333,94 @@ function MachineDetail({ companyId, machineId, onBack }) {
 // ---------------------------------------------------------------------------
 
 function CompanyEditor({ editing, onClose, onDeleted }) {
+  const { verifyAdminPassword } = useAuth()
   const isNew = editing === 'new'
   const item = isNew ? null : editing
   const open = editing != null
   const [name, setName] = useState(item?.name || '')
   const [active, setActive] = useState(item?.active !== false)
   const [error, setError] = useState('')
+  // Deleting a company removes ALL its data, so it's gated behind the admin password.
+  const [confirming, setConfirming] = useState(false)
+  const [pw, setPw] = useState('')
+  const [delErr, setDelErr] = useState('')
+  const [busy, setBusy] = useState(false)
 
   async function save() {
     if (!name.trim()) return setError('Enter a company name.')
     await upsertCompany({ id: item?.id, name, active })
     onClose()
   }
-  async function remove() {
-    if (!confirm(`Delete company "${item.name}"? Its machines, operators and areas stay in the system.`)) return
-    await deleteCompany(item.id)
-    onClose()
-    onDeleted?.()
+  async function confirmDelete() {
+    setDelErr('')
+    if (!pw) return setDelErr('Enter your HQ admin password.')
+    setBusy(true)
+    try {
+      if (!(await verifyAdminPassword(pw))) {
+        setDelErr('Wrong password.')
+        setBusy(false)
+        return
+      }
+      await deleteCompany(item.id)
+      onClose()
+      onDeleted?.()
+    } catch (e) {
+      setDelErr(e.message || 'Could not delete.')
+      setBusy(false)
+    }
+  }
+  function cancelDelete() {
+    setConfirming(false)
+    setPw('')
+    setDelErr('')
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={isNew ? 'New company' : 'Edit company'}>
-      <div className="space-y-3">
-        <Field label="Company name" required error={error}>
-          <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. ABC Construction" autoFocus />
-        </Field>
-        <label className="flex items-center gap-2 text-sm text-slate-600">
-          <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
-          Active
-        </label>
-        <Button full onClick={save}>
-          Save
-        </Button>
-        {!isNew && (
-          <Button full variant="danger" onClick={remove}>
-            <IconTrash width={16} height={16} /> Delete
+    <Modal open={open} onClose={onClose} title={isNew ? 'New company' : confirming ? 'Delete company' : 'Edit company'}>
+      {confirming ? (
+        <div className="space-y-3">
+          <div className="rounded-lg bg-red-50 px-3 py-2.5 text-sm">
+            <p className="font-semibold text-red-700">Permanently delete “{item.name}” and everything in it?</p>
+            <p className="mt-1 text-red-600">
+              This removes its machines, piece rates, operators, areas, and all work records + photos — on every device
+              and in the cloud. This cannot be undone.
+            </p>
+          </div>
+          <Field label="Type your HQ admin password to confirm" error={delErr}>
+            <TextInput
+              type="password"
+              value={pw}
+              onChange={(e) => setPw(e.target.value)}
+              placeholder="HQ admin password"
+              autoFocus
+            />
+          </Field>
+          <Button full variant="danger" onClick={confirmDelete} disabled={busy}>
+            {busy ? 'Deleting…' : 'Permanently delete company'}
           </Button>
-        )}
-      </div>
+          <Button full variant="secondary" onClick={cancelDelete} disabled={busy}>
+            Cancel
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <Field label="Company name" required error={error}>
+            <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. ABC Construction" autoFocus />
+          </Field>
+          <label className="flex items-center gap-2 text-sm text-slate-600">
+            <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
+            Active
+          </label>
+          <Button full onClick={save}>
+            Save
+          </Button>
+          {!isNew && (
+            <Button full variant="danger" onClick={() => setConfirming(true)}>
+              <IconTrash width={16} height={16} /> Delete
+            </Button>
+          )}
+        </div>
+      )}
     </Modal>
   )
 }

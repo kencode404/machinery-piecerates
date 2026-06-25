@@ -31,6 +31,10 @@ function CellInput({ className = '', ...props }) {
   )
 }
 
+// Bahagian B (incentives) + Bahagian C (summary) are hidden for now — only
+// Bahagian A is used. Flip this to true to bring them back.
+const SHOW_INCENTIVES = false
+
 export default function ClaimForm() {
   const { operatorId } = useParams()
   const navigate = useNavigate()
@@ -51,13 +55,22 @@ export default function ClaimForm() {
     const completed = (tasks || []).filter((t) => t.status === TaskStatus.COMPLETED)
     const map = new Map()
     for (const t of completed) {
-      const k = t.pieceRateId || `name:${t.pieceRateName || 'Work'}`
-      if (!map.has(k)) map.set(k, { desc: t.pieceRateName || 'Work', unit: t.unit || '', rate: t.unitPrice || 0, qty: 0, amount: 0 })
+      // Split each work type by area/location so the same work in different
+      // areas shows as its own row, e.g. "Compact jalan (Phase 1)".
+      const rateKey = t.pieceRateId || `name:${t.pieceRateName || 'Work'}`
+      const areaKey = t.areaId || `name:${(t.areaName || '').trim().toLowerCase()}`
+      const k = `${rateKey}__${areaKey}`
+      if (!map.has(k)) {
+        const work = t.pieceRateName || 'Work'
+        const loc = (t.areaName || '').trim()
+        map.set(k, { desc: loc ? `${work} (${loc})` : work, work, loc, unit: t.unit || '', rate: t.unitPrice || 0, qty: 0, amount: 0 })
+      }
       const r = map.get(k)
       r.qty += Number(t.quantity) || 0
       r.amount += Number(t.amount) || 0
     }
-    return [...map.values()]
+    // Keep each work type's areas together (Phase 1, Phase 2, …).
+    return [...map.values()].sort((a, b) => a.work.localeCompare(b.work) || a.loc.localeCompare(b.loc))
   }, [tasks])
 
   const machines = useMemo(() => {
@@ -269,7 +282,7 @@ export default function ClaimForm() {
         </table>
 
         {/* Section A */}
-        <div className="bg-slate-900 px-2 py-1 text-sm font-bold text-white">Bahagian A: Kerja yang Selesai</div>
+        <div className="bg-slate-900 px-2 py-1 text-sm font-bold text-white">Kerja yang Selesai</div>
         <table className="w-full border-collapse">
           <thead>
             <tr className="bg-slate-200 text-sm font-semibold">
@@ -326,6 +339,8 @@ export default function ClaimForm() {
           </div>
         )}
 
+        {SHOW_INCENTIVES && (
+          <>
         {/* Section B */}
         <div className="mt-4 bg-slate-900 px-2 py-1 text-sm font-bold text-white">Bahagian B : Bayaran Insentif</div>
         <table className="w-full border-collapse">
@@ -408,6 +423,8 @@ export default function ClaimForm() {
             </tr>
           </tbody>
         </table>
+          </>
+        )}
 
         {/* Signatures — 3 per row, compact */}
         <div className="mt-6 grid grid-cols-3 gap-3">

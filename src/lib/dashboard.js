@@ -75,6 +75,8 @@ export function buildDashboard({ tasks = [], operators = [], companies = [], yea
 
   const out = []
   for (const [cid, workers] of workersByCompany) {
+    // Skip operators whose company was deleted — that data shouldn't show.
+    if (cid !== 'none' && !companies.some((c) => c.id === cid)) continue
     const ops = workers
       .slice()
       .sort((a, b) => (a.name || '').localeCompare(b.name || ''))

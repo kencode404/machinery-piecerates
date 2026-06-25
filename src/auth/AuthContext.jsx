@@ -135,6 +135,16 @@ export function AuthProvider({ children }) {
     if (error) throw new Error(error.message)
   }, [])
 
+  // Re-check the signed-in admin's password (used to confirm destructive actions).
+  const verifyAdminPassword = useCallback(
+    async (password) => {
+      if (!supabaseEnabled || !adminUser?.email) return false
+      const { error } = await supabase.auth.signInWithPassword({ email: adminUser.email, password })
+      return !error
+    },
+    [adminUser]
+  )
+
   const logout = useCallback(async () => {
     if (adminUser && supabaseEnabled) {
       try {
@@ -158,6 +168,7 @@ export function AuthProvider({ children }) {
     loginOperator,
     changeAdminPassword,
     sendAdminReset,
+    verifyAdminPassword,
     logout
   }
 

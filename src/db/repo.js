@@ -510,8 +510,37 @@ export async function setCompanySigners(id, signers) {
   emitChange()
 }
 
+/**
+ * Delete a company AND everything under it — machines, their piece rates,
+ * operators (and their saved claim extras), areas, and tasks (with photos).
+ * Every delete is tombstoned, so it also propagates to Supabase.
+ */
 export async function deleteCompany(id) {
+  if (!id) return
+  const [machines, operators, areas, tasks] = await Promise.all([
+    db.machines.where('companyId').equals(id).toArray(),
+    db.operators.filter((o) => o.companyId === id).toArray(),
+    db.areas.filter((a) => a.companyId === id).toArray(),
+    db.tasks.where('companyId').equals(id).toArray()
+  ])
+  // Tasks first (also removes their photos + storage files).
+  for (const t of tasks) await deleteTask(t.id, { skipLockCheck: true })
+  // Machines + the piece rates under each.
+  for (const m of machines) {
+    const rates = await db.pieceRates.where('machineId').equals(m.id).toArray()
+    for (const r of rates) await tombstoneAndDelete(db.pieceRates, 'piece_rates', r.id)
+    await tombstoneAndDelete(db.machines, 'machines', m.id)
+  }
+  // Operators + their saved claim extras.
+  for (const o of operators) {
+    const claims = await db.claims.where('operatorId').equals(o.id).toArray()
+    for (const c of claims) await tombstoneAndDelete(db.claims, 'claims', c.id)
+    await tombstoneAndDelete(db.operators, 'operators', o.id)
+  }
+  // Areas, then the company itself.
+  for (const a of areas) await tombstoneAndDelete(db.areas, 'areas', a.id)
   await tombstoneAndDelete(db.companies, 'companies', id)
+  emitChange()
 }
 
 // ---- Claim extras (per operator + month: Bahagian B incentives) ----------

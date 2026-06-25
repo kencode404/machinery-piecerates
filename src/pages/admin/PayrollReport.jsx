@@ -1,20 +1,24 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { getMonthTasks, listOperators, listClaims, isMonthLocked, setMonthLock } from '../../db/repo.js'
+import { getMonthTasks, listOperators, listCompanies, listClaims, isMonthLocked, setMonthLock } from '../../db/repo.js'
 import { getMeta } from '../../db/database.js'
 import { TaskStatus } from '../../db/models.js'
 import { monthKeyOf, monthLabel, shiftMonth, minRetainedMonthKey, formatMoney } from '../../lib/format.js'
 import { formatHours } from '../../lib/duration.js'
 import { Button, Card, EmptyState } from '../../components/ui.jsx'
-import { IconChevron, IconReport, IconLock, IconUnlock } from '../../components/icons.jsx'
+import { IconChevron, IconLock, IconUnlock } from '../../components/icons.jsx'
 
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100
 const thisMonth = () => monthKeyOf(new Date())
 
-function buildPayroll(tasks, { opById = new Map(), claimByOp = new Map(), companyFilter = null } = {}) {
+function buildPayroll(tasks, { opById = new Map(), claimByOp = new Map(), companyFilter = null, companyIds = null } = {}) {
   const completed = tasks.filter(
-    (t) => t.status === TaskStatus.COMPLETED && (!companyFilter || t.companyId === companyFilter)
+    (t) =>
+      t.status === TaskStatus.COMPLETED &&
+      (!companyFilter || t.companyId === companyFilter) &&
+      // Drop work whose company was deleted, so a removed company can't linger.
+      (!companyIds || !t.companyId || companyIds.has(t.companyId))
   )
   const opMap = new Map()
   for (const t of completed) {
@@ -72,21 +76,22 @@ function buildPayroll(tasks, { opById = new Map(), claimByOp = new Map(), compan
 export default function PayrollReport() {
   const navigate = useNavigate()
   const [monthKey, setMonthKey] = useState(thisMonth())
-  const [expanded, setExpanded] = useState({})
 
   const currency = useLiveQuery(() => getMeta('currency', 'RM'), [], 'RM')
   const tasks = useLiveQuery(() => getMonthTasks({ monthKey }), [monthKey], undefined)
   const operators = useLiveQuery(() => listOperators({ includeInactive: true }), [], [])
+  const companies = useLiveQuery(() => listCompanies({ includeInactive: true }), [], undefined)
   const claims = useLiveQuery(() => listClaims({ monthKey }), [monthKey], [])
 
   const locked = useLiveQuery(() => isMonthLocked(monthKey), [monthKey], false)
 
   const opById = new Map((operators || []).map((o) => [o.id, o]))
   const claimByOp = new Map((claims || []).map((c) => [c.operatorId, c]))
-  const report = buildPayroll(tasks || [], { opById, claimByOp })
+  // Existing companies only — once loaded, work from deleted companies is dropped.
+  const companyIds = companies ? new Set(companies.map((c) => c.id)) : null
+  const report = buildPayroll(tasks || [], { opById, claimByOp, companyIds })
   const atCurrent = monthKey >= thisMonth()
   const atFloor = monthKey <= minRetainedMonthKey() // 3-year retention limit
-  const toggle = (k) => setExpanded((p) => ({ ...p, [k]: !p[k] }))
 
   const lockMonth = async () => {
     if (!window.confirm(`Lock payroll for ${monthLabel(monthKey)}?\n\nRecords and payroll for this month can no longer be modified until you unlock it.`)) return
@@ -160,48 +165,26 @@ export default function PayrollReport() {
               <p className="font-bold text-slate-900">{formatMoney(company.total, currency)}</p>
             </div>
             <div className="divide-y divide-slate-100">
-              {company.operators.map((o) => {
-                const open = !!expanded[o.key]
-                return (
-                  <div key={o.key}>
-                    <button className="flex w-full items-center justify-between px-4 py-3 text-left active:bg-slate-50" onClick={() => toggle(o.key)}>
-                      <div className="min-w-0">
-                        <p className="truncate font-medium text-slate-800">{o.name}</p>
-                        <p className="text-xs text-slate-400">
-                          {formatHours(o.minutes)} · {o.count} record{o.count === 1 ? '' : 's'}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-slate-900">{formatMoney(o.amount, currency)}</span>
-                        <IconChevron width={16} height={16} className={`text-slate-300 transition-transform ${open ? 'rotate-90' : ''}`} />
-                      </div>
-                    </button>
-                    {open && (
-                      <div className="space-y-2 px-4 pb-3">
-                        <div className="space-y-1 rounded-lg bg-slate-50 p-2 text-sm">
-                          <div className="flex items-center justify-between">
-                            <span className="text-slate-600">Bahagian A · Kerja + gaji + elaun</span>
-                            <span className="text-slate-700">{formatMoney(o.bahagianA, currency)}</span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-slate-600">Bahagian B · Insentif</span>
-                            <span className="text-slate-700">{formatMoney(o.bahagianB, currency)}</span>
-                          </div>
-                          <div className="mt-1 flex items-center justify-between border-t border-slate-200 pt-1 font-semibold">
-                            <span className="text-slate-700">Jumlah</span>
-                            <span className="text-slate-900">{formatMoney(o.amount, currency)}</span>
-                          </div>
-                        </div>
-                        {o.operatorId && (
-                          <Button size="sm" full variant="secondary" onClick={() => navigate(`/admin/claim/${o.operatorId}?month=${monthKey}`)}>
-                            <IconReport width={16} height={16} /> Create claim form
-                          </Button>
-                        )}
-                      </div>
-                    )}
+              {company.operators.map((o) => (
+                // Tap an operator to open their claim form for this month.
+                <button
+                  key={o.key}
+                  className="flex w-full items-center justify-between px-4 py-3 text-left active:bg-slate-50 disabled:cursor-default"
+                  onClick={() => o.operatorId && navigate(`/admin/claim/${o.operatorId}?month=${monthKey}`)}
+                  disabled={!o.operatorId}
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-slate-800">{o.name}</p>
+                    <p className="text-xs text-slate-400">
+                      {formatHours(o.minutes)} · {o.count} record{o.count === 1 ? '' : 's'}
+                    </p>
                   </div>
-                )
-              })}
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-slate-900">{formatMoney(o.amount, currency)}</span>
+                    {o.operatorId && <IconChevron width={16} height={16} className="text-slate-300" />}
+                  </div>
+                </button>
+              ))}
             </div>
           </Card>
         ))
