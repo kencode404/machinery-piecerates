@@ -249,18 +249,22 @@ async function markSynced(table, id, expectedUpdatedAt, extra = {}) {
 async function processTombstones() {
   const tombs = await db.tombstones.toArray()
   for (const t of tombs) {
+    const now = new Date().toISOString()
     if (t.table === 'photos') {
-      // Remove the storage file AND the DB row.
+      // Remove the storage file (frees space), then soft-delete the row so other
+      // devices drop it on their next pull.
       if (t.storagePath) {
         const { error } = await supabase.storage.from(PHOTO_BUCKET).remove([t.storagePath])
         if (error && !/not.?found/i.test(error.message || '')) throw error
       }
       if (t.serverId) {
-        const { error } = await supabase.from('photos').delete().eq('id', t.serverId)
+        const { error } = await supabase.from('photos').update({ deleted: true, updated_at: now }).eq('id', t.serverId)
         if (error) throw error
       }
     } else if (t.serverId) {
-      const { error } = await supabase.from(t.table).delete().eq('id', t.serverId)
+      // Soft-delete (mark deleted + bump updated_at) rather than a hard delete, so
+      // the removal reaches other devices through the normal pull.
+      const { error } = await supabase.from(t.table).update({ deleted: true, updated_at: now }).eq('id', t.serverId)
       if (error) throw error
     }
     await db.tombstones.delete(t.id)
@@ -298,7 +302,8 @@ async function pullTable(serverTable, dexieTable, mapper) {
     if (existing && existing.syncStatus === SyncStatus.PENDING && existing.updatedAt > local.updatedAt) {
       continue
     }
-    await dexieTable.put(local)
+    if (row.deleted) await dexieTable.delete(local.id) // remote delete → drop locally
+    else await dexieTable.put(local)
   }
   if (maxCursor !== cursor) await setMeta(cursorKey, maxCursor)
 }
@@ -322,7 +327,8 @@ async function pullTasksAndPhotos() {
       if (existing && existing.syncStatus === SyncStatus.PENDING && existing.updatedAt > local.updatedAt) {
         continue
       }
-      await db.tasks.put(local)
+      if (row.deleted) await db.tasks.delete(local.id) // remote delete → drop locally
+      else await db.tasks.put(local)
     }
     if (maxCursor !== cursor) await setMeta('cursor.tasks', maxCursor)
   }
@@ -341,7 +347,8 @@ async function pullTasksAndPhotos() {
       if (row.updated_at > maxCursor) maxCursor = row.updated_at
       const existing = await db.photos.get(row.id)
       if (existing && existing.syncStatus === SyncStatus.PENDING) continue
-      await db.photos.put(fromServerPhoto(row, existing?.blob ?? null))
+      if (row.deleted) await db.photos.delete(row.id) // remote delete → drop locally
+      else await db.photos.put(fromServerPhoto(row, existing?.blob ?? null))
     }
     if (maxCursor !== cursor) await setMeta('cursor.photos', maxCursor)
   }

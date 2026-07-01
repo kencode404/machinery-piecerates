@@ -461,7 +461,7 @@ function SignBlock({ title, value, onChange, readOnly = false }) {
   return (
     <div className="text-xs">
       <p className="font-semibold">{title}</p>
-      <div className="mt-1 h-10 border-b border-slate-400" />
+      <div className="mt-1 h-20 border-b border-slate-400" />
       <div className="mt-1 space-y-0.5">
         <SignLine label="Nama" value={value.name} onChange={(v) => onChange({ ...value, name: v })} readOnly={readOnly} />
         <SignLine label="Jabatan" value={value.role} onChange={(v) => onChange({ ...value, role: v })} readOnly={readOnly} />

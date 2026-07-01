@@ -168,6 +168,18 @@ alter table "machinery-piecerate".operators add column if not exists hourly_rate
 alter table "machinery-piecerate".areas add column if not exists company_id uuid;
 alter table "machinery-piecerate".companies add column if not exists signers jsonb;
 
+-- Soft-delete flag: deleting a row sets deleted = true + bumps updated_at so the
+-- removal propagates to other devices via the normal pull (a hard delete would
+-- vanish silently and leave stale copies on other devices).
+alter table "machinery-piecerate".companies add column if not exists deleted boolean not null default false;
+alter table "machinery-piecerate".machines add column if not exists deleted boolean not null default false;
+alter table "machinery-piecerate".operators add column if not exists deleted boolean not null default false;
+alter table "machinery-piecerate".piece_rates add column if not exists deleted boolean not null default false;
+alter table "machinery-piecerate".areas add column if not exists deleted boolean not null default false;
+alter table "machinery-piecerate".tasks add column if not exists deleted boolean not null default false;
+alter table "machinery-piecerate".photos add column if not exists deleted boolean not null default false;
+alter table "machinery-piecerate".claims add column if not exists deleted boolean not null default false;
+
 -- Indexes that match how the app queries / pulls (by updated_at cursor).
 create index if not exists tasks_month_key_idx on "machinery-piecerate".tasks (month_key);
 create index if not exists tasks_company_idx on "machinery-piecerate".tasks (company_id);
