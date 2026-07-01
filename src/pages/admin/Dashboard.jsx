@@ -129,7 +129,9 @@ function CompanyDashboard({ company, moneyFmt }) {
       {/* Total Road & Drain works — its own chart (metres, not speed) */}
       {company.roadDrainSeries.length > 0 && (
         <Section title="Jumlah kerja Road & Drain (meter)">
-          <BarChart title="Meter" unit="meter" series={company.roadDrainSeries} />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <BarChart title="Meter" series={company.roadDrainSeries} />
+          </div>
         </Section>
       )}
 
