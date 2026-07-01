@@ -113,60 +113,65 @@ function CompanyDashboard({ company, moneyFmt }) {
     <Card className="space-y-4 p-4">
       <p className="text-base font-bold text-slate-800">{company.name}</p>
 
-      {/* 1. Speed per work type */}
-      <Section title="Kelajuan pengendali (unit / jam)">
-        {company.speedGroups.length === 0 ? (
-          <Hint>No measured work yet.</Hint>
-        ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {company.speedGroups.map((g) => (
-              <BarChart key={g.key} title={g.label} unit={`${g.unit}/jam`} series={g.series} />
-            ))}
-          </div>
-        )}
-      </Section>
-
-      {/* Total Road & Drain works — its own chart (metres, not speed) */}
-      {company.roadDrainSeries.length > 0 && (
-        <Section title="Jumlah kerja Road & Drain (meter)">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <BarChart title="Meter" series={company.roadDrainSeries} />
-          </div>
+      {/* The four main charts — 2×2 on desktop, stacked one-per-row on phones. */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {/* Speed per work type */}
+        <Section title="Kelajuan pengendali (unit / jam)">
+          {company.speedGroups.length === 0 ? (
+            <Hint>No measured work yet.</Hint>
+          ) : (
+            <div className="grid grid-cols-1 gap-3">
+              {company.speedGroups.map((g) => (
+                <BarChart key={g.key} title={g.label} unit={`${g.unit}/jam`} series={g.series} />
+              ))}
+            </div>
+          )}
         </Section>
-      )}
 
-      {/* 2. Salary: new vs old */}
-      <Section title="Gaji: sistem baru (kadar kerja) vs lama (ikut jam)">
-        {company.salaryByOperator.length === 0 ? (
-          <Hint>No earnings yet.</Hint>
-        ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {company.salaryByOperator.map((o) => (
-              <div key={o.operatorId}>
-                <BarChart title={o.name} unit={currencyHint(o)} series={o.series} formatValue={moneyFmt} />
-                {!o.hasOld && (
-                  <p className="px-1 pt-0.5 text-[11px] text-amber-600">
-                    Set this operator’s “Kerja jam” (hourly) rate in Settings to compare.
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </Section>
+        {/* Total Road & Drain works (metres, not speed) */}
+        <Section title="Jumlah kerja Road & Drain (meter)">
+          {company.roadDrainSeries.length === 0 ? (
+            <Hint>No road &amp; drain work yet.</Hint>
+          ) : (
+            <div className="grid grid-cols-1 gap-3">
+              <BarChart title="Meter" series={company.roadDrainSeries} />
+            </div>
+          )}
+        </Section>
 
-      {/* Work-hours mix: Kerja jam (red) stacked under other piece-rate work (blue) */}
-      <Section title="Jam kerja: Kerja jam (merah) + kadar kerja (biru)">
-        {company.durationByOperator.length === 0 ? (
-          <Hint>No hours recorded yet.</Hint>
-        ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {company.durationByOperator.map((o) => (
-              <StackedAreaChart key={o.operatorId} title={o.name} unit="jam" series={o.series} />
-            ))}
-          </div>
-        )}
-      </Section>
+        {/* Salary: new vs old */}
+        <Section title="Gaji: sistem baru (kadar kerja) vs lama (ikut jam)">
+          {company.salaryByOperator.length === 0 ? (
+            <Hint>No earnings yet.</Hint>
+          ) : (
+            <div className="grid grid-cols-1 gap-3">
+              {company.salaryByOperator.map((o) => (
+                <div key={o.operatorId}>
+                  <BarChart title={o.name} unit={currencyHint(o)} series={o.series} formatValue={moneyFmt} />
+                  {!o.hasOld && (
+                    <p className="px-1 pt-0.5 text-[11px] text-amber-600">
+                      Set this operator’s “Kerja jam” (hourly) rate in Settings to compare.
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </Section>
+
+        {/* Work-hours mix: Kerja jam (red) stacked under other piece-rate work (blue) */}
+        <Section title="Jam kerja: Kerja jam (merah) + kadar kerja (biru)">
+          {company.durationByOperator.length === 0 ? (
+            <Hint>No hours recorded yet.</Hint>
+          ) : (
+            <div className="grid grid-cols-1 gap-3">
+              {company.durationByOperator.map((o) => (
+                <StackedAreaChart key={o.operatorId} title={o.name} unit="jam" series={o.series} />
+              ))}
+            </div>
+          )}
+        </Section>
+      </div>
 
       {/* Non-working days */}
       <Section title="Hari tidak bekerja (tiada rekod kerja)">
