@@ -125,6 +125,20 @@ export function buildDashboard({ tasks = [], operators = [], companies = [], yea
       .filter((g) => g.series.length)
       .sort((a, b) => (a.key === 'road-drain' ? -1 : b.key === 'road-drain' ? 1 : a.label.localeCompare(b.label)))
 
+    // Road & Drain works total (meters) per operator — the same merged distance
+    // work as the speed chart, but the raw quantity instead of speed.
+    const rd = groups.get('road-drain')
+    const roadDrainSeries = rd
+      ? ops
+          .map((op) => {
+            const cell = rd.perOp.get(op.id)
+            if (!cell) return null
+            const values = cell.qty.map((q) => (q != null ? round2(q) : null))
+            return values.some((v) => v != null) ? { name: op.name, color: op.color, values } : null
+          })
+          .filter(Boolean)
+      : []
+
     // ---- 2. Salary: new (piece) vs old (hourly) per operator ----
     // New = piece-rate work + basic salary + phone allowance — identical to the
     // claim form's Bahagian A. Old = rounded hours × hourly rate + basic salary
@@ -218,6 +232,7 @@ export function buildDashboard({ tasks = [], operators = [], companies = [], yea
       name: companyName(cid === 'none' ? null : cid),
       operators: ops.map(({ id, name, color }) => ({ id, name, color })),
       speedGroups,
+      roadDrainSeries,
       salaryByOperator,
       durationByOperator,
       nonWorkingSeries,

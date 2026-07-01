@@ -113,15 +113,18 @@ function CompanyDashboard({ company, moneyFmt }) {
     <Card className="space-y-4 p-4">
       <p className="text-base font-bold text-slate-800">{company.name}</p>
 
-      {/* 1. Speed per work type */}
+      {/* 1. Speed per work type + total Road & Drain metres */}
       <Section title="Kelajuan pengendali (unit / jam)">
-        {company.speedGroups.length === 0 ? (
+        {company.speedGroups.length === 0 && company.roadDrainSeries.length === 0 ? (
           <Hint>No measured work yet.</Hint>
         ) : (
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {company.speedGroups.map((g) => (
               <BarChart key={g.key} title={g.label} unit={`${g.unit}/jam`} series={g.series} />
             ))}
+            {company.roadDrainSeries.length > 0 && (
+              <BarChart title="Jumlah kerja Road & Drain" unit="meter" series={company.roadDrainSeries} />
+            )}
           </div>
         )}
       </Section>
@@ -131,7 +134,7 @@ function CompanyDashboard({ company, moneyFmt }) {
         {company.salaryByOperator.length === 0 ? (
           <Hint>No earnings yet.</Hint>
         ) : (
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {company.salaryByOperator.map((o) => (
               <div key={o.operatorId}>
                 <BarChart title={o.name} unit={currencyHint(o)} series={o.series} formatValue={moneyFmt} />
@@ -151,7 +154,7 @@ function CompanyDashboard({ company, moneyFmt }) {
         {company.durationByOperator.length === 0 ? (
           <Hint>No hours recorded yet.</Hint>
         ) : (
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {company.durationByOperator.map((o) => (
               <StackedAreaChart key={o.operatorId} title={o.name} unit="jam" series={o.series} />
             ))}
