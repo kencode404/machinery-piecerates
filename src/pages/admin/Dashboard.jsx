@@ -113,21 +113,25 @@ function CompanyDashboard({ company, moneyFmt }) {
     <Card className="space-y-4 p-4">
       <p className="text-base font-bold text-slate-800">{company.name}</p>
 
-      {/* 1. Speed per work type + total Road & Drain metres */}
+      {/* 1. Speed per work type */}
       <Section title="Kelajuan pengendali (unit / jam)">
-        {company.speedGroups.length === 0 && company.roadDrainSeries.length === 0 ? (
+        {company.speedGroups.length === 0 ? (
           <Hint>No measured work yet.</Hint>
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {company.speedGroups.map((g) => (
               <BarChart key={g.key} title={g.label} unit={`${g.unit}/jam`} series={g.series} />
             ))}
-            {company.roadDrainSeries.length > 0 && (
-              <BarChart title="Jumlah kerja Road & Drain" unit="meter" series={company.roadDrainSeries} />
-            )}
           </div>
         )}
       </Section>
+
+      {/* Total Road & Drain works — its own chart (metres, not speed) */}
+      {company.roadDrainSeries.length > 0 && (
+        <Section title="Jumlah kerja Road & Drain (meter)">
+          <BarChart title="Meter" unit="meter" series={company.roadDrainSeries} />
+        </Section>
+      )}
 
       {/* 2. Salary: new vs old */}
       <Section title="Gaji: sistem baru (kadar kerja) vs lama (ikut jam)">
