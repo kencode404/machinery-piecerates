@@ -25,7 +25,7 @@ import PhotoCapture from '../../components/PhotoCapture.jsx'
 import { Button, Card, Field, NumberInput, TextInput, TextArea, Select, Spinner, Badge } from '../../components/ui.jsx'
 import { QuantityInput } from '../../components/QuantityInput.jsx'
 import { evalExpr, isExpression } from '../../lib/expr.js'
-import { IconTrash, IconLock } from '../../components/icons.jsx'
+import { IconTrash, IconLock, IconWarning } from '../../components/icons.jsx'
 
 const DUR_MODES = [
   ['time', 'Start/End'],
@@ -235,15 +235,14 @@ export default function EditTask() {
     const startMileage = f.durMode === 'meter' && f.startMeter !== '' ? Number(f.startMeter) : null
     const endMileage = f.durMode === 'meter' && f.endMeter !== '' ? Number(f.endMeter) : null
 
-    // Piece rate + quantity are optional; a completed record still needs the rest.
-    if (f.status === TaskStatus.COMPLETED) {
-      if (!machine) return setError('A completed record needs a machine.')
-      if (durationMinutes == null) {
-        return setError('Enter the duration (end time, hour meter, or hours).')
-      }
-      if (f.quantity.trim() !== '' && !(evalExpr(f.quantity) > 0)) {
-        return setError('Quantity must be a number or sum greater than 0 (e.g. 5+5+10-6).')
-      }
+    // Managers may save incomplete records. The only hard rule for a completed
+    // record is a machine (it sets the company); missing duration / piece rate is
+    // allowed and just flagged with a warning. A typed quantity must still parse.
+    if (f.status === TaskStatus.COMPLETED && !machine) {
+      return setError('A completed record needs a machine.')
+    }
+    if (f.quantity.trim() !== '' && !(evalExpr(f.quantity) > 0)) {
+      return setError('Quantity must be a number or sum greater than 0 (e.g. 5+5+10-6).')
     }
 
     const patch = {
@@ -498,6 +497,19 @@ export default function EditTask() {
       </Card>
 
       {error && <p className="mt-3 text-sm text-red-500">{error}</p>}
+
+      {(durationMins == null || !rate) && (
+        <div className="mt-3 flex items-start gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
+          <IconWarning width={16} height={16} className="mt-0.5 shrink-0" />
+          <span>
+            Incomplete record — missing{' '}
+            {[durationMins == null ? 'duration' : null, !rate ? 'work type (piece rate)' : null]
+              .filter(Boolean)
+              .join(' and ')}
+            . You can still save.
+          </span>
+        </div>
+      )}
 
       <div className="mt-4 space-y-2">
         <Button full type="submit" disabled={busy || locked}>
