@@ -19,6 +19,7 @@ import PhotoCapture from '../../components/PhotoCapture.jsx'
 import { Button, Card, Field, NumberInput, TextInput, TextArea, Select } from '../../components/ui.jsx'
 import { QuantityInput } from '../../components/QuantityInput.jsx'
 import { evalExpr, isExpression } from '../../lib/expr.js'
+import { IconWarning } from '../../components/icons.jsx'
 
 const dateToISO = (d) => (d ? new Date(`${d}T00:00:00`).toISOString() : null)
 
@@ -181,14 +182,16 @@ export default function AddTask() {
     } else {
       if (!f.date) return setError('Choose the date of the job.')
       startTime = dateToISO(f.date)
+      // Duration is optional (managers may save incomplete) — only validate +
+      // compute it when the readings/hours are actually provided.
       if (f.durMode === 'meter') {
-        if (f.startMeter === '' || f.endMeter === '') return setError('Enter start and end hour-meter readings.')
-        if (Number(f.endMeter) < Number(f.startMeter)) return setError('End meter must be at least the start meter.')
-        startMileage = f.startMeter
-        endMileage = f.endMeter
-        durationMinutes = Math.round((Number(f.endMeter) - Number(f.startMeter)) * 60)
-      } else {
-        if (f.hours === '' || Number(f.hours) <= 0) return setError('Enter the hours worked.')
+        if (f.startMeter !== '' && f.endMeter !== '') {
+          if (Number(f.endMeter) < Number(f.startMeter)) return setError('End meter must be at least the start meter.')
+          startMileage = f.startMeter
+          endMileage = f.endMeter
+          durationMinutes = Math.round((Number(f.endMeter) - Number(f.startMeter)) * 60)
+        }
+      } else if (f.hours !== '' && Number(f.hours) > 0) {
         durationMinutes = Math.round(Number(f.hours) * 60)
       }
     }
@@ -394,6 +397,19 @@ export default function AddTask() {
       </Card>
 
       {error && <p className="mt-3 text-sm text-red-500">{error}</p>}
+
+      {(durationMins == null || !rate) && (
+        <div className="mt-3 flex items-start gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
+          <IconWarning width={16} height={16} className="mt-0.5 shrink-0" />
+          <span>
+            Incomplete record — missing{' '}
+            {[durationMins == null ? 'duration' : null, !rate ? 'work type (piece rate)' : null]
+              .filter(Boolean)
+              .join(' and ')}
+            . You can still save.
+          </span>
+        </div>
+      )}
 
       <Button full type="submit" className="mt-4" disabled={busy}>
         {busy ? 'Saving…' : 'Add record'}
