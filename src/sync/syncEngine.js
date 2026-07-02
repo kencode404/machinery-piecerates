@@ -5,7 +5,7 @@
 // online, then pulls presets and other-device records back down. It is safe to
 // call requestSync() liberally — runs are serialised and debounced.
 
-import { supabase, supabaseEnabled, PHOTO_BUCKET } from './supabase.js'
+import { supabase, supabaseEnabled, PHOTO_BUCKET, tbl } from './supabase.js'
 import { db, getMeta, setMeta } from '../db/database.js'
 import { onChange } from './bus.js'
 import { SyncStatus } from '../db/models.js'
@@ -201,7 +201,7 @@ async function pushPhotos() {
       .from(PHOTO_BUCKET)
       .upload(path, p.blob, { upsert: true, contentType: p.blob.type || 'image/jpeg' })
     if (up.error) throw up.error
-    const { error } = await supabase.from('photos').upsert(toServerPhoto(p, path))
+    const { error } = await supabase.from(tbl('photos')).upsert(toServerPhoto(p, path))
     if (error) throw error
     // Only finalise if the row hasn't changed underneath us.
     const cur = await db.photos.get(p.id)
@@ -216,7 +216,7 @@ async function pushTasks() {
   // up to the cloud right away (survives a lost/broken phone).
   const pending = await db.tasks.where('syncStatus').equals(SyncStatus.PENDING).toArray()
   if (!pending.length) return
-  const { error } = await supabase.from('tasks').upsert(pending.map(toServerTask))
+  const { error } = await supabase.from(tbl('tasks')).upsert(pending.map(toServerTask))
   if (error) throw error
   for (const t of pending) await markSynced(db.tasks, t.id, t.updatedAt, { serverId: t.id })
 }
@@ -234,7 +234,7 @@ async function pushPresets() {
 async function pushTable(table, serverTable, mapper) {
   const pending = await table.where('syncStatus').equals(SyncStatus.PENDING).toArray()
   if (!pending.length) return
-  const { error } = await supabase.from(serverTable).upsert(pending.map(mapper))
+  const { error } = await supabase.from(tbl(serverTable)).upsert(pending.map(mapper))
   if (error) throw error
   for (const row of pending) await markSynced(table, row.id, row.updatedAt)
 }
@@ -258,13 +258,13 @@ async function processTombstones() {
         if (error && !/not.?found/i.test(error.message || '')) throw error
       }
       if (t.serverId) {
-        const { error } = await supabase.from('photos').update({ deleted: true, updated_at: now }).eq('id', t.serverId)
+        const { error } = await supabase.from(tbl('photos')).update({ deleted: true, updated_at: now }).eq('id', t.serverId)
         if (error) throw error
       }
     } else if (t.serverId) {
       // Soft-delete (mark deleted + bump updated_at) rather than a hard delete, so
       // the removal reaches other devices through the normal pull.
-      const { error } = await supabase.from(t.table).update({ deleted: true, updated_at: now }).eq('id', t.serverId)
+      const { error } = await supabase.from(tbl(t.table)).update({ deleted: true, updated_at: now }).eq('id', t.serverId)
       if (error) throw error
     }
     await db.tombstones.delete(t.id)
@@ -287,7 +287,7 @@ async function pullTable(serverTable, dexieTable, mapper) {
   const cursorKey = `cursor.${serverTable}`
   const cursor = (await getMeta(cursorKey)) || EPOCH
   const { data, error } = await supabase
-    .from(serverTable)
+    .from(tbl(serverTable))
     .select('*')
     .gt('updated_at', cursor)
     .order('updated_at', { ascending: true })
@@ -313,7 +313,7 @@ async function pullTasksAndPhotos() {
   {
     const cursor = (await getMeta('cursor.tasks')) || EPOCH
     const { data, error } = await supabase
-      .from('tasks')
+      .from(tbl('tasks'))
       .select('*')
       .gt('updated_at', cursor)
       .order('updated_at', { ascending: true })
@@ -336,7 +336,7 @@ async function pullTasksAndPhotos() {
   {
     const cursor = (await getMeta('cursor.photos')) || EPOCH
     const { data, error } = await supabase
-      .from('photos')
+      .from(tbl('photos'))
       .select('*')
       .gt('updated_at', cursor)
       .order('updated_at', { ascending: true })
