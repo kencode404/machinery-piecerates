@@ -205,6 +205,8 @@ function RecordRow({ task, currency, showOperator, onClick }) {
   // For hour-based work (Kerja jam) the quantity already is the hours, so the
   // duration would be redundant — show the unit only.
   const unitIsHours = (task.unit || '').toLowerCase() === 'jam'
+  // Non-hourly work is expected to have a duration; flag it when missing.
+  const noDuration = !unitIsHours && task.durationMinutes == null
   return (
     <button
       type="button"
@@ -215,13 +217,14 @@ function RecordRow({ task, currency, showOperator, onClick }) {
     >
       <div className="min-w-0">
         <p className="flex items-center gap-1 text-xs text-slate-700">
-          {incomplete && (
-            <IconWarning width={12} height={12} className="shrink-0 text-amber-500" aria-label="Piece rate or quantity missing" />
+          {(incomplete || noDuration) && (
+            <IconWarning width={12} height={12} className="shrink-0 text-amber-500" aria-label="Incomplete record" />
           )}
           <span className="truncate">
             {task.quantity == null ? 'No quantity' : formatQty(task.quantity, task.unit)}
             {!unitIsHours && task.durationMinutes != null ? ` · ${formatHours(task.durationMinutes)}` : ''}
           </span>
+          {noDuration && <span className="shrink-0 font-medium text-amber-600">· no duration</span>}
         </p>
         <div className="mt-0.5 flex items-center gap-1">
           <Badge color={createdByBadge(task.createdBy).color} className="px-1.5 py-0 text-[10px]">
