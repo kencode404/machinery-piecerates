@@ -7,7 +7,7 @@ import { TaskStatus } from '../../db/models.js'
 import { monthKeyOf, monthLabel, shiftMonth, minRetainedMonthKey, formatMoney } from '../../lib/format.js'
 import { formatHours } from '../../lib/duration.js'
 import { Button, Card, EmptyState } from '../../components/ui.jsx'
-import { IconChevron, IconLock, IconUnlock } from '../../components/icons.jsx'
+import { IconChevron, IconLock, IconUnlock, IconReport } from '../../components/icons.jsx'
 
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100
 const thisMonth = () => monthKeyOf(new Date())
@@ -29,6 +29,7 @@ function buildPayroll(tasks, { opById = new Map(), claimByOp = new Map(), compan
         operatorId: t.operatorId || null,
         name: t.operatorName || 'Unknown',
         companyName: t.companyName || 'No company',
+        companyId: t.companyId || null,
         workAmount: 0, // Bahagian A piece-rate work only
         minutes: 0,
         count: 0
@@ -60,7 +61,7 @@ function buildPayroll(tasks, { opById = new Map(), claimByOp = new Map(), compan
     o.bahagianB = round2(incentivesTotal)
     o.amount = round2(o.bahagianA + o.bahagianB)
     const ck = o.companyName
-    if (!compMap.has(ck)) compMap.set(ck, { companyName: o.companyName, operators: [], total: 0 })
+    if (!compMap.has(ck)) compMap.set(ck, { companyName: o.companyName, companyId: o.companyId, operators: [], total: 0 })
     const c = compMap.get(ck)
     c.operators.push(o)
     c.total += o.amount
@@ -160,9 +161,20 @@ export default function PayrollReport() {
       ) : (
         report.companies.map((company) => (
           <Card key={company.companyName} className="overflow-hidden">
-            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-2">
-              <p className="font-semibold text-slate-700">{company.companyName}</p>
-              <p className="font-bold text-slate-900">{formatMoney(company.total, currency)}</p>
+            <div className="flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50 px-4 py-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <p className="truncate font-semibold text-slate-700">{company.companyName}</p>
+                {company.companyId && (
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/admin/claims/${company.companyId}?month=${monthKey}`)}
+                    className="flex shrink-0 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-brand active:bg-slate-100"
+                  >
+                    <IconReport width={13} height={13} /> Print all
+                  </button>
+                )}
+              </div>
+              <p className="shrink-0 font-bold text-slate-900">{formatMoney(company.total, currency)}</p>
             </div>
             <div className="divide-y divide-slate-100">
               {company.operators.map((o) => (

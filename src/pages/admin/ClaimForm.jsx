@@ -78,12 +78,10 @@ export default function ClaimForm() {
     return [...set].join(', ')
   }, [tasks])
 
-  // Editable extra Section A rows (monthly salary, allowances).
-  // "Gaji Bulanan" is added by the init effect only when the operator has a
-  // preset basic salary, so the default here is just the phone allowance row.
-  const [extraA, setExtraA] = useState([
-    { desc: 'Elaun telephone', unit: 'Sebulan', rate: '', qty: '1' }
-  ])
+  // Editable extra Section A rows (monthly salary, allowances). Both are added by
+  // the init effect only when the operator has that value preset in Settings, so
+  // the default is empty (an admin can still add rows manually).
+  const [extraA, setExtraA] = useState([])
   // Section B — incentives. Saved per operator + month (see saved-claim effect).
   const defaultIncentives = () => [{ desc: 'Insentif Audit Jalan (Bulan: )', unit: 'Setiap Kes', rate: '', qty: '' }]
   const [incentives, setIncentives] = useState(defaultIncentives)
@@ -121,19 +119,17 @@ export default function ClaimForm() {
     if (operator?.companyId && company?.id !== operator.companyId) return
     initRef.current = true
     const today = todayStr()
-    // Pre-fill the Section A pay rows from the operator's saved pay. The "Gaji
-    // Bulanan" row only appears when the operator actually has a preset basic
-    // salary; otherwise it's omitted (an admin can still add it manually).
+    // Pre-fill the Section A pay rows from the operator's saved pay. Each row only
+    // appears when that value is preset in Settings — "Gaji Bulanan" for basic
+    // salary, "Elaun telephone" for phone allowance; otherwise it's omitted (an
+    // admin can still add it manually).
     const payRows = []
     if (operator?.basicSalary != null) {
       payRows.push({ desc: 'Gaji Bulanan', unit: 'Sebulan', rate: String(operator.basicSalary), qty: '1' })
     }
-    payRows.push({
-      desc: 'Elaun telephone',
-      unit: 'Sebulan',
-      rate: operator?.phoneAllowance != null ? String(operator.phoneAllowance) : '',
-      qty: '1'
-    })
+    if (operator?.phoneAllowance != null) {
+      payRows.push({ desc: 'Elaun telephone', unit: 'Sebulan', rate: String(operator.phoneAllowance), qty: '1' })
+    }
     setExtraA(payRows)
     const s = company?.signers
     if (s) {

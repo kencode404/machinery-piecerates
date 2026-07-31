@@ -17,6 +17,7 @@ import AddTask from './pages/admin/AddTask.jsx'
 import Settings from './pages/admin/Settings.jsx'
 import PayrollReport from './pages/admin/PayrollReport.jsx'
 import ClaimForm from './pages/admin/ClaimForm.jsx'
+import AllClaims from './pages/admin/AllClaims.jsx'
 import Dashboard from './pages/admin/Dashboard.jsx'
 import Worklog from './pages/admin/Worklog.jsx'
 
@@ -58,6 +59,7 @@ export default function App() {
           <Route path="/admin/worklog/:operatorId" element={<Worklog />} />
           <Route path="/admin/payroll" element={<AdminOnly><PayrollReport /></AdminOnly>} />
           <Route path="/admin/claim/:operatorId" element={<AdminOnly><ClaimForm /></AdminOnly>} />
+          <Route path="/admin/claims/:companyId" element={<AdminOnly><AllClaims /></AdminOnly>} />
           <Route path="/admin/dashboard" element={<AdminOnly><Dashboard /></AdminOnly>} />
           <Route path="/admin/settings" element={<AdminOnly><Settings /></AdminOnly>} />
         </Route>
