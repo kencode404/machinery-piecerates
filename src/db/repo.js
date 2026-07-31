@@ -141,8 +141,9 @@ export async function completeTask(taskId, { endTime, endWorkPhoto, endPhoto, ma
   const now = nowISO()
   const endWorkPhotoId = task.endWorkPhotoId || (endWorkPhoto ? uuid() : null)
   const endPhotoId = task.endPhotoId || (endPhoto ? uuid() : null)
-  // Operator can edit the end time; otherwise use the end photo's timestamp.
-  const endTimeFinal = endTime || endPhoto?.capturedAt || endWorkPhoto?.capturedAt || task.endTime || now
+  // Operator can edit the end time; otherwise use the ending meter photo's
+  // timestamp (the true end-of-work moment), not the proof-of-work photo.
+  const endTimeFinal = endTime || endPhoto?.capturedAt || task.endTime || now
   const qty = numOrNull(quantity)
   const unitPrice = pieceRate ? numOrNull(pieceRate.price) : null
 
@@ -157,6 +158,72 @@ export async function completeTask(taskId, { endTime, endWorkPhoto, endPhoto, ma
     endWorkPhotoId,
     endPhotoId,
     durationMinutes: minutesBetween(task.startTime, endTimeFinal),
+
+    pieceRateId: realRateId(pieceRate?.id),
+    pieceRateName: pieceRate?.name ?? null,
+    unit: pieceRate?.unit ?? null,
+    unitPrice,
+    quantity: qty,
+    quantityExpr: quantityExpr ?? null,
+    amount: qty != null && unitPrice != null ? round2(qty * unitPrice) : null,
+
+    areaId: area?.id ?? null,
+    areaName: area?.name ?? null,
+
+    notes: notes ?? task.notes ?? '',
+    syncStatus: SyncStatus.PENDING,
+    updatedAt: now
+  }
+
+  await db.transaction('rw', db.tasks, db.photos, async () => {
+    await db.tasks.update(taskId, patch)
+    if (endWorkPhoto && endWorkPhotoId) {
+      const existing = await db.photos.get(endWorkPhotoId)
+      const row = buildPhoto(endWorkPhotoId, taskId, PhotoKind.END_WORK, endWorkPhoto)
+      if (existing) await db.photos.put({ ...existing, ...row })
+      else await db.photos.add(row)
+    }
+    if (endPhoto && endPhotoId) {
+      const existing = await db.photos.get(endPhotoId)
+      const row = buildPhoto(endPhotoId, taskId, PhotoKind.END_MILEAGE, endPhoto)
+      if (existing) await db.photos.put({ ...existing, ...row })
+      else await db.photos.add(row)
+    }
+  })
+  emitChange()
+}
+
+/**
+ * Operator saves a half-finished task WITHOUT completing it. Everything is
+ * optional; the task stays IN_PROGRESS so it keeps showing under Open tasks and
+ * can be resumed later. Mirrors completeTask, minus the required fields and the
+ * COMPLETED status.
+ */
+export async function saveTaskProgress(taskId, { endTime, endWorkPhoto, endPhoto, machine, company, pieceRate, quantity, quantityExpr, area, notes, endGps }) {
+  const task = await db.tasks.get(taskId)
+  if (!task) throw new Error('Task not found')
+  await assertMonthUnlocked(task.monthKey)
+
+  const now = nowISO()
+  const endWorkPhotoId = task.endWorkPhotoId || (endWorkPhoto ? uuid() : null)
+  const endPhotoId = task.endPhotoId || (endPhoto ? uuid() : null)
+  // A draft may not have an end time yet — keep it null until known. When taken
+  // from a photo, use the ending meter photo (not proof-of-work).
+  const endTimeFinal = endTime || endPhoto?.capturedAt || task.endTime || null
+  const qty = numOrNull(quantity)
+  const unitPrice = pieceRate ? numOrNull(pieceRate.price) : null
+
+  const patch = {
+    status: TaskStatus.IN_PROGRESS, // still hanging — this is a draft save
+    machineId: machine?.id ?? task.machineId ?? null,
+    machineName: machine?.name ?? task.machineName ?? null,
+    companyId: company?.id ?? machine?.companyId ?? task.companyId ?? null,
+    companyName: company?.name ?? task.companyName ?? null,
+    endTime: endTimeFinal,
+    endGps: endGps || endPhoto?.gps || endWorkPhoto?.gps || task.endGps || emptyGeo(),
+    endWorkPhotoId,
+    endPhotoId,
+    durationMinutes: endTimeFinal ? minutesBetween(task.startTime, endTimeFinal) : null,
 
     pieceRateId: realRateId(pieceRate?.id),
     pieceRateName: pieceRate?.name ?? null,

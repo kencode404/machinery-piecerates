@@ -4,7 +4,9 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useAuth } from '../../auth/AuthContext.jsx'
 import {
   getTask,
+  getPhoto,
   completeTask,
+  saveTaskProgress,
   deleteTask,
   listPieceRates,
   listAreas,
@@ -18,6 +20,7 @@ import { minutesBetween, formatHours } from '../../lib/duration.js'
 import { timeOf, dateTimeOf, formatMoney, toLocalInput, fromLocalInput, formatLatLng, parseLatLng } from '../../lib/format.js'
 import { QuantityInput } from '../../components/QuantityInput.jsx'
 import { evalExpr, isExpression } from '../../lib/expr.js'
+import { requestSync } from '../../sync/syncEngine.js'
 
 const geoFor = (loc, fallback) => {
   const { lat, lng } = parseLatLng(loc)
@@ -57,6 +60,11 @@ export default function CompleteTask() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const submitting = useRef(false)
+  const hydrated = useRef(false)
+  const rateHydrated = useRef(false)
+  const finalizing = useRef(false) // true once completing/deleting — stop auto-save
+  const savedWork = useRef(null) // end-work photo object already persisted
+  const savedMeter = useRef(null) // end-meter photo object already persisted
 
   // Piece rates belong to the chosen machine.
   const rates = useLiveQuery(
@@ -65,7 +73,9 @@ export default function CompleteTask() {
     []
   )
 
-  const suggested = endPhoto?.capturedAt || endWorkPhoto?.capturedAt || null
+  // End time comes from the ending meter photo only (the true end-of-work
+  // moment), not the proof-of-work photo.
+  const suggested = endPhoto?.capturedAt || null
   useEffect(() => {
     if (!timeTouched && suggested) setEndTime(toLocalInput(suggested))
   }, [suggested, timeTouched])
@@ -76,6 +86,44 @@ export default function CompleteTask() {
     const g = (endPhoto?.gps?.lat != null && endPhoto.gps) || (endWorkPhoto?.gps?.lat != null && endWorkPhoto.gps) || null
     if (g) setEndLoc(formatLatLng(g.lat, g.lng))
   }, [endPhoto, endWorkPhoto, locTouched])
+
+  // Resume a saved draft: fill the form (once) from whatever was saved on the
+  // task. Photos re-hydrate from their stored rows on this device.
+  useEffect(() => {
+    if (hydrated.current || !task || task.status === TaskStatus.COMPLETED) return
+    hydrated.current = true
+    if (task.machineId) setMachineId(task.machineId)
+    if (task.quantityExpr) setQuantity(task.quantityExpr)
+    else if (task.quantity != null) setQuantity(String(task.quantity))
+    if (task.areaId) setAreaId(task.areaId)
+    if (task.notes) setNotes(task.notes)
+    if (task.endTime) {
+      setTimeTouched(true)
+      setEndTime(toLocalInput(task.endTime))
+    }
+    if (task.endGps?.lat != null) {
+      setLocTouched(true)
+      setEndLoc(formatLatLng(task.endGps.lat, task.endGps.lng))
+    }
+    ;(async () => {
+      if (task.endWorkPhotoId) {
+        const p = await getPhoto(task.endWorkPhotoId)
+        if (p) {
+          const obj = { blob: p.blob || null, capturedAt: p.capturedAt, gps: p.gps, storagePath: p.storagePath }
+          savedWork.current = obj // already persisted — don't re-upload on auto-save
+          setEndWorkPhoto(obj)
+        }
+      }
+      if (task.endPhotoId) {
+        const p = await getPhoto(task.endPhotoId)
+        if (p) {
+          const obj = { blob: p.blob || null, capturedAt: p.capturedAt, gps: p.gps, storagePath: p.storagePath }
+          savedMeter.current = obj
+          setEndPhoto(obj)
+        }
+      }
+    })()
+  }, [task])
 
   const machine = useMemo(() => (machines || []).find((m) => m.id === machineId) || null, [machines, machineId])
   const company = useMemo(
@@ -90,10 +138,87 @@ export default function CompleteTask() {
   const rate = useMemo(() => rateOptions.find((r) => r.id === rateId) || null, [rateOptions, rateId])
   const area = useMemo(() => (areas || []).find((a) => a.id === areaId) || null, [areas, areaId])
 
+  // The saved piece rate can only be re-selected once its options load (they
+  // depend on the machine). Match by id, or by name for "Kerja jam".
+  useEffect(() => {
+    if (rateHydrated.current || !task || !rateOptions.length) return
+    if (task.pieceRateId && rateOptions.some((r) => r.id === task.pieceRateId)) {
+      rateHydrated.current = true
+      setRateId(task.pieceRateId)
+    } else if (task.pieceRateName) {
+      const m = rateOptions.find((r) => r.name === task.pieceRateName)
+      if (m) {
+        rateHydrated.current = true
+        setRateId(m.id)
+      }
+    }
+  }, [task, rateOptions])
+
   const endISO = fromLocalInput(endTime)
   const durationMins = task ? minutesBetween(task.startTime, endISO) : null
   const qtyNum = evalExpr(quantity)
   const amount = rate && qtyNum != null ? qtyNum * Number(rate.price) : null
+
+  // ---- Auto-save the draft (offline-first) --------------------------------
+  // Every change is written to local IndexedDB so a half-finished task is never
+  // lost, even with no connection. After each save we request a sync, which
+  // pushes to the server when online and simply stays queued when offline.
+  const draft = {
+    endTime: endTime ? endISO : null,
+    // Only pass photos that carry new bytes; already-saved ones keep their ids.
+    endWorkPhoto: endWorkPhoto?.blob && endWorkPhoto !== savedWork.current ? endWorkPhoto : null,
+    endPhoto: endPhoto?.blob && endPhoto !== savedMeter.current ? endPhoto : null,
+    endGps: geoFor(endLoc, endPhoto?.gps || endWorkPhoto?.gps),
+    machine,
+    company,
+    pieceRate: rate,
+    quantity: qtyNum,
+    quantityExpr: isExpression(quantity) ? quantity.trim() : null,
+    area,
+    notes
+  }
+  const draftRef = useRef(draft)
+  draftRef.current = draft
+  const saveDraftRef = useRef(null)
+  saveDraftRef.current = async () => {
+    if (finalizing.current || !hydrated.current) return
+    const d = draftRef.current
+    try {
+      await saveTaskProgress(id, d)
+      if (d.endWorkPhoto) savedWork.current = d.endWorkPhoto
+      if (d.endPhoto) savedMeter.current = d.endPhoto
+      requestSync() // push now if online; stays queued locally when offline
+    } catch {
+      /* offline or month locked — the next change will retry */
+    }
+  }
+
+  // Debounced auto-save on any change to the finish form (photo, machine, rate…).
+  // Short delay so a filled field is persisted locally almost immediately.
+  useEffect(() => {
+    if (!hydrated.current) return
+    const timer = setTimeout(() => saveDraftRef.current?.(), 400)
+    return () => clearTimeout(timer)
+  }, [endTime, endLoc, endWorkPhoto, endPhoto, machineId, rateId, quantity, areaId, notes])
+
+  // Also flush the moment the page is hidden or closed — mobile browsers freeze
+  // or kill a backgrounded PWA before an unmount would run, which is exactly when
+  // an offline draft would otherwise be lost. All writes are local, so no
+  // connection is needed here.
+  useEffect(() => {
+    const flush = () => saveDraftRef.current?.()
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') flush()
+    }
+    document.addEventListener('visibilitychange', onHide)
+    window.addEventListener('pagehide', flush)
+    // And once more on the way out (in-app back navigation).
+    return () => {
+      document.removeEventListener('visibilitychange', onHide)
+      window.removeEventListener('pagehide', flush)
+      flush()
+    }
+  }, [])
 
   if (task === undefined) {
     return (
@@ -139,6 +264,7 @@ export default function CompleteTask() {
       return
     }
     submitting.current = true
+    finalizing.current = true // stop auto-save from racing the completion
     setBusy(true)
     try {
       await completeTask(id, {
@@ -159,6 +285,7 @@ export default function CompleteTask() {
       setError(err.message || 'Could not save.')
       setBusy(false)
       submitting.current = false
+      finalizing.current = false // completion failed — let auto-save resume
     }
   }
 
@@ -166,6 +293,7 @@ export default function CompleteTask() {
   async function remove() {
     if (busy) return
     if (!window.confirm('Delete this unfinished task? This cannot be undone.')) return
+    finalizing.current = true // stop auto-save from re-creating what we delete
     setError('')
     setBusy(true)
     try {
@@ -174,6 +302,7 @@ export default function CompleteTask() {
     } catch (err) {
       setError(err.message || 'Could not delete.')
       setBusy(false)
+      finalizing.current = false
     }
   }
 
@@ -299,6 +428,10 @@ export default function CompleteTask() {
         <Button full type="submit" disabled={busy || !canSave}>
           {busy ? 'Saving…' : 'Complete task'}
         </Button>
+
+        <p className="text-center text-xs text-slate-400">
+          Progress saves automatically — you can leave and finish this task later.
+        </p>
 
         <Button full type="button" variant="danger" disabled={busy} onClick={remove}>
           Delete unfinished task
