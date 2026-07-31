@@ -327,23 +327,22 @@ export async function deleteTask(taskId, { skipLockCheck = false } = {}) {
   const task = await db.tasks.get(taskId)
   if (!skipLockCheck) await assertMonthUnlocked(task?.monthKey)
   await db.transaction('rw', db.tasks, db.photos, db.tombstones, async () => {
+    const now = nowISO()
     const photos = await db.photos.where('taskId').equals(taskId).toArray()
     if (task?.serverId) {
-      await db.tombstones.put({
-        id: uuid(),
-        table: 'tasks',
-        serverId: task.serverId,
-        createdAt: nowISO()
-      })
+      await db.tombstones.put({ id: uuid(), table: 'tasks', serverId: task.serverId, createdAt: now })
     }
-    for (const p of photos) {
-      await db.tombstones.put({
-        id: uuid(),
-        table: 'photos',
-        serverId: p.id, // delete the row on the server too (covers missing cascade)
-        storagePath: p.storagePath || `${p.taskId}/${p.id}.jpg`, // and remove the file
-        createdAt: nowISO()
-      })
+    // One tombstone per photo id tied to this task — each removes the Storage
+    // file AND soft-deletes the DB row. Cover both the local photo rows and the
+    // task's own photo slots, so the file is still removed even if this device
+    // never pulled the photo rows. Path is deterministic: `<taskId>/<photoId>.jpg`.
+    const paths = new Map() // photoId -> storagePath
+    for (const p of photos) paths.set(p.id, p.storagePath || `${taskId}/${p.id}.jpg`)
+    for (const pid of [task?.startPhotoId, task?.workPhotoId, task?.endWorkPhotoId, task?.endPhotoId]) {
+      if (pid && !paths.has(pid)) paths.set(pid, `${taskId}/${pid}.jpg`)
+    }
+    for (const [pid, storagePath] of paths) {
+      await db.tombstones.put({ id: uuid(), table: 'photos', serverId: pid, storagePath, createdAt: now })
     }
     await db.photos.where('taskId').equals(taskId).delete()
     await db.tasks.delete(taskId)

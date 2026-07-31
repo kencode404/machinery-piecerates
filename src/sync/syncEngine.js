@@ -248,27 +248,36 @@ async function markSynced(table, id, expectedUpdatedAt, extra = {}) {
 
 async function processTombstones() {
   const tombs = await db.tombstones.toArray()
+  let failed = 0
   for (const t of tombs) {
     const now = new Date().toISOString()
-    if (t.table === 'photos') {
-      // Remove the storage file (frees space), then soft-delete the row so other
-      // devices drop it on their next pull.
-      if (t.storagePath) {
-        const { error } = await supabase.storage.from(PHOTO_BUCKET).remove([t.storagePath])
-        if (error && !/not.?found/i.test(error.message || '')) throw error
-      }
-      if (t.serverId) {
-        const { error } = await supabase.from(tbl('photos')).update({ deleted: true, updated_at: now }).eq('id', t.serverId)
+    // Each tombstone is independent — a single stuck one must not block the rest
+    // of the queue (otherwise later deletes, incl. their Storage removals, never
+    // run). Failed ones stay in the table and retry on the next sync.
+    try {
+      if (t.table === 'photos') {
+        // Remove the storage file (frees space), then soft-delete the row so other
+        // devices drop it on their next pull.
+        if (t.storagePath) {
+          const { error } = await supabase.storage.from(PHOTO_BUCKET).remove([t.storagePath])
+          if (error && !/not.?found/i.test(error.message || '')) throw error
+        }
+        if (t.serverId) {
+          const { error } = await supabase.from(tbl('photos')).update({ deleted: true, updated_at: now }).eq('id', t.serverId)
+          if (error) throw error
+        }
+      } else if (t.serverId) {
+        // Soft-delete (mark deleted + bump updated_at) rather than a hard delete, so
+        // the removal reaches other devices through the normal pull.
+        const { error } = await supabase.from(tbl(t.table)).update({ deleted: true, updated_at: now }).eq('id', t.serverId)
         if (error) throw error
       }
-    } else if (t.serverId) {
-      // Soft-delete (mark deleted + bump updated_at) rather than a hard delete, so
-      // the removal reaches other devices through the normal pull.
-      const { error } = await supabase.from(tbl(t.table)).update({ deleted: true, updated_at: now }).eq('id', t.serverId)
-      if (error) throw error
+      await db.tombstones.delete(t.id)
+    } catch {
+      failed++ // keep the tombstone for a later retry, move on to the next
     }
-    await db.tombstones.delete(t.id)
   }
+  if (failed) scheduleRetry() // come back sooner to finish the stragglers
 }
 
 // ---- pull ----------------------------------------------------------------
