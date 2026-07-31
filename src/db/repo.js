@@ -200,14 +200,19 @@ export async function completeTask(taskId, { endTime, endWorkPhoto, endPhoto, ma
  * can be resumed later. Mirrors completeTask, minus the required fields and the
  * COMPLETED status.
  */
-export async function saveTaskProgress(taskId, { endTime, endWorkPhoto, endPhoto, machine, company, pieceRate, quantity, quantityExpr, area, notes, endGps }) {
+export async function saveTaskProgress(
+  taskId,
+  { endTime, endWorkPhoto, endPhoto, removeEndWorkPhoto = false, removeEndPhoto = false, machine, company, pieceRate, quantity, quantityExpr, area, notes, endGps }
+) {
   const task = await db.tasks.get(taskId)
   if (!task) throw new Error('Task not found')
   await assertMonthUnlocked(task.monthKey)
 
   const now = nowISO()
-  const endWorkPhotoId = task.endWorkPhotoId || (endWorkPhoto ? uuid() : null)
-  const endPhotoId = task.endPhotoId || (endPhoto ? uuid() : null)
+  // A cleared photo drops its id (and its row + Storage file below); otherwise
+  // keep the existing one, or mint a new id for a freshly captured photo.
+  const endWorkPhotoId = removeEndWorkPhoto ? null : task.endWorkPhotoId || (endWorkPhoto ? uuid() : null)
+  const endPhotoId = removeEndPhoto ? null : task.endPhotoId || (endPhoto ? uuid() : null)
   // A draft may not have an end time yet — keep it null until known. When taken
   // from a photo, use the ending meter photo (not proof-of-work).
   const endTimeFinal = endTime || endPhoto?.capturedAt || task.endTime || null
@@ -242,8 +247,11 @@ export async function saveTaskProgress(taskId, { endTime, endWorkPhoto, endPhoto
     updatedAt: now
   }
 
-  await db.transaction('rw', db.tasks, db.photos, async () => {
+  await db.transaction('rw', db.tasks, db.photos, db.tombstones, async () => {
     await db.tasks.update(taskId, patch)
+    // Photos the operator cleared — drop the row and remove the Storage file.
+    if (removeEndWorkPhoto && task.endWorkPhotoId) await tombstonePhoto(taskId, task.endWorkPhotoId, now)
+    if (removeEndPhoto && task.endPhotoId) await tombstonePhoto(taskId, task.endPhotoId, now)
     if (endWorkPhoto && endWorkPhotoId) {
       const existing = await db.photos.get(endWorkPhotoId)
       const row = buildPhoto(endWorkPhotoId, taskId, PhotoKind.END_WORK, endWorkPhoto)
@@ -258,6 +266,20 @@ export async function saveTaskProgress(taskId, { endTime, endWorkPhoto, endPhoto
     }
   })
   emitChange()
+}
+
+// Tombstone one photo (removes its Storage file + row on the next sync) and drop
+// the local row now. Must run inside a rw transaction over photos + tombstones.
+async function tombstonePhoto(taskId, photoId, now) {
+  const p = await db.photos.get(photoId)
+  await db.tombstones.put({
+    id: uuid(),
+    table: 'photos',
+    serverId: photoId,
+    storagePath: p?.storagePath || `${taskId}/${photoId}.jpg`,
+    createdAt: now
+  })
+  await db.photos.delete(photoId)
 }
 
 // ---------------------------------------------------------------------------

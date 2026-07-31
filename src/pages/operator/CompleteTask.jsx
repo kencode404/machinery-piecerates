@@ -65,6 +65,19 @@ export default function CompleteTask() {
   const finalizing = useRef(false) // true once completing/deleting — stop auto-save
   const savedWork = useRef(null) // end-work photo object already persisted
   const savedMeter = useRef(null) // end-meter photo object already persisted
+  const removedWork = useRef(false) // operator cleared the proof-of-work photo
+  const removedMeter = useRef(false) // operator cleared the ending-meter photo
+
+  // Photo handlers that also record an explicit "cleared" flag, so a removal is
+  // persisted (and can't misfire during hydration, which sets the photo directly).
+  const onEndWorkPhoto = (p) => {
+    setEndWorkPhoto(p)
+    removedWork.current = !p
+  }
+  const onEndPhoto = (p) => {
+    setEndPhoto(p)
+    removedMeter.current = !p
+  }
 
   // Piece rates belong to the chosen machine.
   const rates = useLiveQuery(
@@ -168,6 +181,8 @@ export default function CompleteTask() {
     // Only pass photos that carry new bytes; already-saved ones keep their ids.
     endWorkPhoto: endWorkPhoto?.blob && endWorkPhoto !== savedWork.current ? endWorkPhoto : null,
     endPhoto: endPhoto?.blob && endPhoto !== savedMeter.current ? endPhoto : null,
+    removeEndWorkPhoto: removedWork.current,
+    removeEndPhoto: removedMeter.current,
     endGps: geoFor(endLoc, endPhoto?.gps || endWorkPhoto?.gps),
     machine,
     company,
@@ -184,9 +199,13 @@ export default function CompleteTask() {
     if (finalizing.current || !hydrated.current) return
     const d = draftRef.current
     try {
+      // Write to the local IndexedDB first — this always succeeds offline. Only
+      // after it's safely stored do we ask the sync engine to push it.
       await saveTaskProgress(id, d)
       if (d.endWorkPhoto) savedWork.current = d.endWorkPhoto
       if (d.endPhoto) savedMeter.current = d.endPhoto
+      if (d.removeEndWorkPhoto) removedWork.current = false
+      if (d.removeEndPhoto) removedMeter.current = false
       requestSync() // push now if online; stays queued locally when offline
     } catch {
       /* offline or month locked — the next change will retry */
@@ -197,7 +216,7 @@ export default function CompleteTask() {
   // Short delay so a filled field is persisted locally almost immediately.
   useEffect(() => {
     if (!hydrated.current) return
-    const timer = setTimeout(() => saveDraftRef.current?.(), 400)
+    const timer = setTimeout(() => saveDraftRef.current?.(), 250)
     return () => clearTimeout(timer)
   }, [endTime, endLoc, endWorkPhoto, endPhoto, machineId, rateId, quantity, areaId, notes])
 
@@ -306,9 +325,16 @@ export default function CompleteTask() {
     }
   }
 
+  // Leaving via the back button: persist the draft to local IndexedDB FIRST,
+  // then navigate — so a quick back can never lose the changes.
+  async function goBack() {
+    await saveDraftRef.current?.()
+    navigate('/open')
+  }
+
   return (
     <form onSubmit={submit} className="pb-4">
-      <PageHeader title="Finish task" subtitle={`Started ${dateTimeOf(task.startTime)}`} onBack={() => navigate('/open')} />
+      <PageHeader title="Finish task" subtitle={`Started ${dateTimeOf(task.startTime)}`} onBack={goBack} />
 
       {/* Reference: the two start photos */}
       <Card className="mb-4 p-3">
@@ -333,10 +359,10 @@ export default function CompleteTask() {
           required
           hint="Photo showing the finished work"
           value={endWorkPhoto}
-          onChange={setEndWorkPhoto}
+          onChange={onEndWorkPhoto}
           detectTime={false}
         />
-        <PhotoCapture label="Ending meter photo" required hint="Photo of the hour-meter / mileage" value={endPhoto} onChange={setEndPhoto} />
+        <PhotoCapture label="Ending meter photo" required hint="Photo of the hour-meter / mileage" value={endPhoto} onChange={onEndPhoto} />
 
         <Card className="space-y-4 p-4">
           <Field label="End time" required hint="Taken from the photo — edit if needed">
