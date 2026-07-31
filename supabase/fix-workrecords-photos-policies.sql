@@ -1,20 +1,11 @@
--- New namespaced Storage bucket for this app's work photos, so other apps can
--- share the same Supabase project without colliding (matches the workrecords_
--- table prefix). Run this BEFORE deploying the build whose
--- VITE_SUPABASE_PHOTO_BUCKET=workrecords_photos.
+-- Fix: the workrecords_photos storage policies were scoped to the `anon` role
+-- only. The HQ admin signs in via Supabase Auth, so their requests run as the
+-- `authenticated` role and had NO matching policy — so storage uploads/deletes
+-- silently did nothing (delete returned 200 with an empty result, leaving the
+-- file orphaned). Re-scope all four policies to both anon AND authenticated.
 --
--- The bucket is PUBLIC (synced devices show photos by public URL). Safe to run
--- more than once.
+-- Safe to run more than once.
 
--- 1) Create the bucket.
-insert into storage.buckets (id, name, public)
-values ('workrecords_photos', 'workrecords_photos', true)
-on conflict (id) do update set public = true;
-
--- 2) Allow the app to upload / overwrite / delete / read objects in it.
--- Both roles: operators run as `anon`, the HQ admin (Supabase Auth) as
--- `authenticated`. Missing `authenticated` here silently breaks admin
--- uploads/deletes.
 drop policy if exists "wr_photos_anon_insert" on storage.objects;
 create policy "wr_photos_anon_insert" on storage.objects
   for insert to anon, authenticated
