@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { getOperator, getCompany, getMonthTasks, setCompanySigners, getClaim, saveClaimIncentives, isMonthLocked } from '../../db/repo.js'
 import { TaskStatus } from '../../db/models.js'
-import { monthKeyOf, monthLabel } from '../../lib/format.js'
+import { monthKeyOf, monthLabel, claimPdfName } from '../../lib/format.js'
 import PageHeader from '../../components/PageHeader.jsx'
 import { Button, Spinner } from '../../components/ui.jsx'
 import { IconPlus, IconTrash, IconLock } from '../../components/icons.jsx'
@@ -242,6 +242,18 @@ export default function ClaimForm() {
   const cell = 'border border-slate-400 px-2 py-1 text-sm'
   const numCell = `${cell} text-right`
 
+  // Give "Save as PDF" a tidy default filename, then restore the title.
+  const printSheet = () => {
+    const prev = document.title
+    document.title = claimPdfName(company?.name, monthKey, operator?.name)
+    const restore = () => {
+      document.title = prev
+      window.removeEventListener('afterprint', restore)
+    }
+    window.addEventListener('afterprint', restore)
+    window.print()
+  }
+
   return (
     <div className="pb-6">
       <div className="print:hidden">
@@ -446,7 +458,7 @@ export default function ClaimForm() {
         )}
       </div>
 
-      <Button full className="mt-4 print:hidden" onClick={() => window.print()}>
+      <Button full className="mt-4 print:hidden" onClick={printSheet}>
         Print / Save as PDF
       </Button>
     </div>

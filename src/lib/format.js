@@ -24,6 +24,28 @@ export function monthLabel(monthKey) {
   return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
 }
 
+/**
+ * Default filename for a "Save as PDF" claim print. Company initials are the
+ * first letter of each word ("Meridian Palma Sdn Bhd" -> "MPSB").
+ *   - Combined per-company: "MPSB Machinery Piece Rates (Jul 2026)"
+ *   - Single operator:      "Ali Bin Abu MPSB Claim (Jul 2026)"
+ */
+export function claimPdfName(companyName, monthKey, operatorName) {
+  // Drop any parenthetical suffix (e.g. "MJSB (Suai)") before taking initials.
+  const initials = (companyName || '')
+    .replace(/\([^)]*\)/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w[0])
+    .join('')
+    .toUpperCase()
+  const [y, m] = monthKey.split('-').map(Number)
+  const monShort = new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'short' })
+  const when = `(${monShort} ${y})`
+  if (operatorName) return `${operatorName} ${initials || ''} Claim ${when}`.replace(/\s+/g, ' ').trim()
+  return `${initials || 'Claim'} Machinery Piece Rates ${when}`
+}
+
 /** Shift a "YYYY-MM" key by n months. */
 export function shiftMonth(monthKey, n) {
   const [y, m] = monthKey.split('-').map(Number)

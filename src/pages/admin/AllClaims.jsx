@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { getCompany, getMonthTasks, listOperators } from '../../db/repo.js'
 import { TaskStatus } from '../../db/models.js'
-import { monthKeyOf, monthLabel } from '../../lib/format.js'
+import { monthKeyOf, monthLabel, claimPdfName } from '../../lib/format.js'
 import PageHeader from '../../components/PageHeader.jsx'
 import { Button, Spinner, EmptyState } from '../../components/ui.jsx'
 
@@ -162,6 +162,19 @@ export default function AllClaims() {
       .sort((a, b) => (a.operator.name || '').localeCompare(b.operator.name || ''))
   }, [operators, tasks, companyId])
 
+  // Set the document title so "Save as PDF" defaults to a tidy filename, then
+  // restore it once the print dialog closes.
+  const printAll = () => {
+    const prev = document.title
+    document.title = claimPdfName(company?.name, monthKey)
+    const restore = () => {
+      document.title = prev
+      window.removeEventListener('afterprint', restore)
+    }
+    window.addEventListener('afterprint', restore)
+    window.print()
+  }
+
   if (company === undefined || operators === undefined || tasks === undefined) {
     return (
       <div className="flex justify-center py-20 text-brand">
@@ -211,7 +224,7 @@ export default function AllClaims() {
             ))}
           </div>
 
-          <Button full className="mt-4 print:hidden" onClick={() => window.print()}>
+          <Button full className="mt-4 print:hidden" onClick={printAll}>
             Print all {claims.length} claim{claims.length === 1 ? '' : 's'} / Save as PDF
           </Button>
         </>
