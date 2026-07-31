@@ -70,8 +70,9 @@ export async function startTask({ session, startTime, notes, startPhoto, workPho
   const taskId = uuid()
   const startPhotoId = startPhoto ? uuid() : null
   const workPhotoId = workPhoto ? uuid() : null
-  // Operator can edit the start time; otherwise use the first photo's timestamp.
-  const startTimeFinal = startTime || startPhoto?.capturedAt || workPhoto?.capturedAt || now
+  // Operator can edit the start time; otherwise use the meter photo's timestamp
+  // (photo 1) — the optional photo 2 doesn't drive start time.
+  const startTimeFinal = startTime || startPhoto?.capturedAt || now
   await assertMonthUnlocked(monthKeyOf(startTimeFinal))
 
   const task = {
@@ -88,7 +89,7 @@ export async function startTask({ session, startTime, notes, startPhoto, workPho
 
     startMileage: null,
     startTime: startTimeFinal,
-    startGps: startGps || startPhoto?.gps || workPhoto?.gps || emptyGeo(),
+    startGps: startGps || startPhoto?.gps || emptyGeo(),
     startPhotoId,
     workPhotoId,
 

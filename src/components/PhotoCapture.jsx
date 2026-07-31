@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react'
-import { capturePhotoMeta } from '../lib/photoMeta.js'
+import { useEffect, useRef, useState } from 'react'
+import { capturePhotoMeta, getDevicePosition } from '../lib/photoMeta.js'
 import { compressImage } from '../lib/image.js'
 import { GpsSource } from '../db/models.js'
 import { dateTimeSecondsOf, formatGps, formatBytes } from '../lib/format.js'
@@ -17,27 +17,91 @@ import { Spinner } from './ui.jsx'
  * value:    { blob, capturedAt, gps, timeSource } | null
  * onChange: (captured | null) => void
  */
-export default function PhotoCapture({ label, hint, value, onChange, required, compact }) {
+export default function PhotoCapture({
+  label,
+  hint,
+  value,
+  onChange,
+  required,
+  compact,
+  detectTime = true,
+  detectLocation = true
+}) {
   const inputRef = useRef(null)
   const [busy, setBusy] = useState(false)
+  const [detecting, setDetecting] = useState(false)
   const [zoom, setZoom] = useState(null)
   const previewUrl = usePhotoUrl(value)
+  const tokenRef = useRef(0) // invalidates a stale in-flight detection
+  const warmGpsRef = useRef(null) // device fix warmed up when the form opened
+
+  // Warm up the device location as soon as the form opens, so a fix is ready by
+  // capture time (and the permission prompt appears up front). Only for the full
+  // operator photos — not the admin compact tiles.
+  useEffect(() => {
+    if (compact || !detectLocation) return
+    let alive = true
+    getDevicePosition().then((pos) => {
+      if (alive && pos) warmGpsRef.current = pos
+    })
+    return () => {
+      alive = false
+    }
+  }, [compact, detectLocation])
+
+  // Invalidate any pending detection and clear the photo.
+  function clear() {
+    tokenRef.current++
+    setDetecting(false)
+    onChange(null)
+  }
 
   async function handleFile(e) {
     const file = e.target.files?.[0]
     e.target.value = '' // allow re-selecting the same file
     if (!file) return
+    const token = ++tokenRef.current
     setBusy(true)
     try {
-      // Read EXIF from the ORIGINAL file first (compression strips metadata).
-      const meta = await capturePhotoMeta(file)
+      // Show the photo immediately with provisional metadata (current time + the
+      // warmed-up GPS), so no one is blocked by slower EXIF/GPS reads. Detection
+      // then refines it in the background. Same fast path for operator and admin.
       const blob = await compressImage(file)
-      onChange({ blob, capturedAt: meta.capturedAt, gps: meta.gps, timeSource: meta.timeSource })
+      if (token !== tokenRef.current) return
+      const warm = detectLocation ? warmGpsRef.current : null
+      const provisional = {
+        blob,
+        capturedAt: new Date().toISOString(),
+        timeSource: detectTime ? GpsSource.DEVICE : GpsSource.NONE,
+        gps: warm
+          ? { lat: warm.lat, lng: warm.lng, source: GpsSource.DEVICE, accuracy: warm.accuracy ?? null }
+          : { lat: null, lng: null, source: GpsSource.NONE, accuracy: null }
+      }
+      onChange(provisional)
+      setBusy(false)
+
+      // Refine time/location from EXIF (and a fresh GPS fix) in the background.
+      if (detectTime || detectLocation) {
+        setDetecting(true)
+        capturePhotoMeta(file, { time: detectTime, gps: detectLocation })
+          .then((meta) => {
+            if (token !== tokenRef.current) return // photo replaced/removed meanwhile
+            onChange({
+              blob,
+              capturedAt: detectTime ? meta.capturedAt : provisional.capturedAt,
+              timeSource: detectTime ? meta.timeSource : provisional.timeSource,
+              // Keep the warmed GPS if the background pass found nothing better.
+              gps: meta.gps && meta.gps.lat != null ? meta.gps : provisional.gps
+            })
+          })
+          .finally(() => {
+            if (token === tokenRef.current) setDetecting(false)
+          })
+      }
     } catch (err) {
       console.error('Photo capture failed', err)
       alert('Could not read that photo. Please try again.')
-    } finally {
-      setBusy(false)
+      if (token === tokenRef.current) setBusy(false)
     }
   }
 
@@ -73,7 +137,7 @@ export default function PhotoCapture({ label, hint, value, onChange, required, c
             />
             <button
               type="button"
-              onClick={() => onChange(null)}
+              onClick={clear}
               className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-xs leading-none text-white"
               aria-label="Remove photo"
             >
@@ -140,22 +204,31 @@ export default function PhotoCapture({ label, hint, value, onChange, required, c
             )}
           </div>
           <div className="space-y-1 p-3 text-sm">
-            <div className="flex items-center gap-2 text-slate-600">
-              <IconClock width={15} height={15} className="text-slate-400" />
-              <span>{dateTimeSecondsOf(value.capturedAt)}</span>
-              {value.timeSource === GpsSource.DEVICE && (
-                <span className="text-[11px] text-amber-600">(device time)</span>
-              )}
-            </div>
-            <div className="flex items-center gap-2 text-slate-600">
-              <IconPin width={15} height={15} className={gpsOk ? 'text-slate-400' : 'text-red-400'} />
-              <span className={gpsOk ? '' : 'text-red-500'}>{formatGps(value.gps)}</span>
-              {sourceLabel && <span className="text-[11px] text-slate-400">({sourceLabel})</span>}
-            </div>
-            {!gpsOk && (
-              <p className="text-[11px] text-red-500">
-                No location found. Allow location access, or upload a photo that has GPS.
-              </p>
+            {detectTime && (
+              <div className="flex items-center gap-2 text-slate-600">
+                <IconClock width={15} height={15} className="text-slate-400" />
+                <span>{dateTimeSecondsOf(value.capturedAt)}</span>
+                {value.timeSource === GpsSource.DEVICE && (
+                  <span className="text-[11px] text-amber-600">(device time)</span>
+                )}
+              </div>
+            )}
+            {detectLocation && (
+              <>
+                <div className="flex items-center gap-2 text-slate-600">
+                  <IconPin width={15} height={15} className={gpsOk ? 'text-slate-400' : 'text-red-400'} />
+                  <span className={gpsOk ? '' : 'text-red-500'}>{formatGps(value.gps)}</span>
+                  {sourceLabel && <span className="text-[11px] text-slate-400">({sourceLabel})</span>}
+                </div>
+                {!gpsOk && (
+                  <p className="text-[11px] text-red-500">
+                    No location found. Allow location access, or upload a photo that has GPS.
+                  </p>
+                )}
+              </>
+            )}
+            {detecting && (
+              <p className="text-[11px] text-slate-400">Reading date &amp; location…</p>
             )}
             {value.blob?.size != null && (
               <p className="text-[11px] text-slate-400">Upload size ≈ {formatBytes(value.blob.size)}</p>
@@ -172,7 +245,7 @@ export default function PhotoCapture({ label, hint, value, onChange, required, c
             <div className="w-px bg-slate-100" />
             <button
               type="button"
-              onClick={() => onChange(null)}
+              onClick={clear}
               className="flex-1 py-2.5 text-sm font-medium text-red-500 active:bg-red-50"
             >
               Remove

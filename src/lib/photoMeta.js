@@ -58,36 +58,46 @@ export function getDevicePosition(timeoutMs = 9000) {
 
 /**
  * Full hybrid capture for one photo file.
+ *
+ * `opts.time` / `opts.gps` (both default true) let a caller skip detecting the
+ * timestamp and/or location — used for photos that don't drive a start/end time
+ * or location (the optional 2nd start photo, the proof-of-work photo), so there
+ * is no misleading time and no GPS prompt/warning for them.
+ *
  * @param {File|Blob} file
+ * @param {{ time?: boolean, gps?: boolean }} [opts]
  * @returns {Promise<{ capturedAt: string, gps: import('../db/models.js').GeoPoint, timeSource: string }>}
  */
-export async function capturePhotoMeta(file) {
+export async function capturePhotoMeta(file, { time = true, gps = true } = {}) {
   const now = new Date()
-  const exif = await readExif(file)
+  const exif = time || gps ? await readExif(file) : { time: null, lat: null, lng: null, hasGps: false }
 
-  let lat = exif.lat
-  let lng = exif.lng
-  let gpsSource = exif.hasGps ? GpsSource.EXIF : GpsSource.NONE
+  // Timestamp — from EXIF when detecting, otherwise just "now" (not shown).
+  const capturedAt = (time && exif.time ? exif.time : now).toISOString()
+  const timeSource = time ? (exif.time ? GpsSource.EXIF : GpsSource.DEVICE) : GpsSource.NONE
 
-  if (!exif.hasGps) {
-    const dev = await getDevicePosition()
-    if (dev) {
-      lat = dev.lat
-      lng = dev.lng
-      gpsSource = GpsSource.DEVICE
-      return {
-        capturedAt: (exif.time || now).toISOString(),
-        timeSource: exif.time ? GpsSource.EXIF : GpsSource.DEVICE,
-        gps: { lat, lng, source: gpsSource, accuracy: dev.accuracy }
+  // Location — EXIF first, then live device GPS, only when detecting.
+  let lat = null
+  let lng = null
+  let gpsSource = GpsSource.NONE
+  let accuracy = null
+  if (gps) {
+    if (exif.hasGps) {
+      lat = exif.lat
+      lng = exif.lng
+      gpsSource = GpsSource.EXIF
+    } else {
+      const dev = await getDevicePosition()
+      if (dev) {
+        lat = dev.lat
+        lng = dev.lng
+        gpsSource = GpsSource.DEVICE
+        accuracy = dev.accuracy
       }
     }
   }
 
-  return {
-    capturedAt: (exif.time || now).toISOString(),
-    timeSource: exif.time ? GpsSource.EXIF : GpsSource.DEVICE,
-    gps: { lat, lng, source: gpsSource, accuracy: null }
-  }
+  return { capturedAt, timeSource, gps: { lat, lng, source: gpsSource, accuracy } }
 }
 
 function isValidDate(d) {

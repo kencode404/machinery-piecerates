@@ -328,7 +328,14 @@ export default function CompleteTask() {
       </Card>
 
       <div className="space-y-4">
-        <PhotoCapture label="Proof of work" required hint="Photo showing the finished work" value={endWorkPhoto} onChange={setEndWorkPhoto} />
+        <PhotoCapture
+          label="Proof of work"
+          required
+          hint="Photo showing the finished work"
+          value={endWorkPhoto}
+          onChange={setEndWorkPhoto}
+          detectTime={false}
+        />
         <PhotoCapture label="Ending meter photo" required hint="Photo of the hour-meter / mileage" value={endPhoto} onChange={setEndPhoto} />
 
         <Card className="space-y-4 p-4">

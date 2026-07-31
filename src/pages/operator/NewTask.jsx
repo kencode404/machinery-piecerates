@@ -30,19 +30,17 @@ export default function NewTask() {
   const [error, setError] = useState('')
   const submitting = useRef(false) // synchronous double-submit guard
 
-  // Suggest the start time from the first photo with a timestamp, until the
-  // operator edits it by hand.
-  const suggested = photo1?.capturedAt || photo2?.capturedAt || null
+  // Start time + location come from the meter photo (photo 1) only — photo 2 is
+  // an optional extra and shouldn't drive them.
+  const suggested = photo1?.capturedAt || null
   useEffect(() => {
     if (!timeTouched && suggested) setStartTime(toLocalInput(suggested))
   }, [suggested, timeTouched])
 
-  // Pre-fill the location from the first photo with GPS, until edited by hand.
   useEffect(() => {
     if (locTouched) return
-    const g = (photo1?.gps?.lat != null && photo1.gps) || (photo2?.gps?.lat != null && photo2.gps) || null
-    if (g) setStartLoc(formatLatLng(g.lat, g.lng))
-  }, [photo1, photo2, locTouched])
+    if (photo1?.gps?.lat != null) setStartLoc(formatLatLng(photo1.gps.lat, photo1.gps.lng))
+  }, [photo1, locTouched])
 
   const canSave = photo1 && startTime
 
@@ -60,7 +58,7 @@ export default function NewTask() {
       await startTask({
         session: user, // carries companyId/companyName/machineId/machineName/operatorName
         startTime: fromLocalInput(startTime),
-        startGps: geoFor(startLoc, photo1?.gps || photo2?.gps),
+        startGps: geoFor(startLoc, photo1?.gps),
         notes,
         startPhoto: photo1,
         workPhoto: photo2
@@ -83,7 +81,14 @@ export default function NewTask() {
 
       <div className="space-y-4">
         <PhotoCapture label="Meter photo" required hint="Photo of the hour-meter / mileage" value={photo1} onChange={setPhoto1} />
-        <PhotoCapture label="Photo 2 (optional)" hint="e.g. the machine / site" value={photo2} onChange={setPhoto2} />
+        <PhotoCapture
+          label="Photo 2 (optional)"
+          hint="e.g. the machine / site"
+          value={photo2}
+          onChange={setPhoto2}
+          detectTime={false}
+          detectLocation={false}
+        />
 
         <Card className="space-y-3 p-4">
           <Field label="Start time" required hint="Taken from the photo — edit if needed">
