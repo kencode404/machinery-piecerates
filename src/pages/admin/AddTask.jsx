@@ -80,6 +80,7 @@ export default function AddTask() {
   const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }))
   const [startPhoto, setStartPhoto] = useState(null)
   const [workPhoto, setWorkPhoto] = useState(null)
+  const [endWorkPhoto, setEndWorkPhoto] = useState(null)
   const [endPhoto, setEndPhoto] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -138,17 +139,19 @@ export default function AddTask() {
   function onPhoto(which, photo) {
     if (which === 'start') setStartPhoto(photo)
     else if (which === 'work') setWorkPhoto(photo)
+    else if (which === 'endwork') setEndWorkPhoto(photo)
     else setEndPhoto(photo)
     if (!photo) return
+    const isEnd = which === 'end' || which === 'endwork'
     setF((p) => {
       const next = { ...p, durMode: 'time' }
       if (photo.capturedAt) {
-        if (which === 'end') next.endTime = toLocalInput(photo.capturedAt)
+        if (isEnd) next.endTime = toLocalInput(photo.capturedAt)
         else next.startTime = toLocalInput(photo.capturedAt)
       }
       if (photo.gps?.lat != null) {
         const loc = formatLatLng(photo.gps.lat, photo.gps.lng)
-        if (which === 'end') next.endLoc = loc
+        if (isEnd) next.endLoc = loc
         else next.startLoc = loc
       }
       return next
@@ -214,7 +217,7 @@ export default function AddTask() {
         startMileage,
         endMileage,
         startGps: geoFor(f.startLoc, startPhoto?.gps || workPhoto?.gps),
-        endGps: geoFor(f.endLoc, endPhoto?.gps),
+        endGps: geoFor(f.endLoc, endPhoto?.gps || endWorkPhoto?.gps),
         pieceRate: rate,
         quantity: qtyNum,
         quantityExpr: isExpression(f.quantity) ? f.quantity.trim() : null,
@@ -222,6 +225,7 @@ export default function AddTask() {
         notes: f.notes,
         startPhoto,
         workPhoto,
+        endWorkPhoto,
         endPhoto
       })
       // Return to records on the SAME operator's tab so several jobs can be
@@ -389,10 +393,11 @@ export default function AddTask() {
           Photos<span className="text-slate-400"> (optional)</span>
         </p>
         <p className="mb-2 text-xs text-slate-400">A photo sets Start/End mode and fills the time + GPS.</p>
-        <div className="grid grid-cols-3 gap-2">
-          <PhotoCapture compact label="Start" value={startPhoto} onChange={(p) => onPhoto('start', p)} />
-          <PhotoCapture compact label="Work" value={workPhoto} onChange={(p) => onPhoto('work', p)} />
-          <PhotoCapture compact label="End" value={endPhoto} onChange={(p) => onPhoto('end', p)} />
+        <div className="grid grid-cols-2 gap-2">
+          <PhotoCapture compact label="Start meter" value={startPhoto} onChange={(p) => onPhoto('start', p)} />
+          <PhotoCapture compact label="Start photo 2" value={workPhoto} onChange={(p) => onPhoto('work', p)} />
+          <PhotoCapture compact label="Proof of work" value={endWorkPhoto} onChange={(p) => onPhoto('endwork', p)} />
+          <PhotoCapture compact label="End meter" value={endPhoto} onChange={(p) => onPhoto('end', p)} />
         </div>
       </Card>
 

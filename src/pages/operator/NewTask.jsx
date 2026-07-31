@@ -44,14 +44,14 @@ export default function NewTask() {
     if (g) setStartLoc(formatLatLng(g.lat, g.lng))
   }, [photo1, photo2, locTouched])
 
-  const canSave = photo1 && photo2 && startTime
+  const canSave = photo1 && startTime
 
   async function submit(e) {
     e.preventDefault()
     if (submitting.current) return
     setError('')
     if (!canSave) {
-      setError('Add both proof photos and a start time.')
+      setError('Add the meter photo and a start time.')
       return
     }
     submitting.current = true
@@ -77,13 +77,13 @@ export default function NewTask() {
     <form onSubmit={submit} className="pb-4">
       <PageHeader
         title="Start a task"
-        subtitle="Take two proof photos. Finish it later."
+        subtitle="Take the meter photo. Finish it later."
         onBack={() => navigate('/open')}
       />
 
       <div className="space-y-4">
-        <PhotoCapture label="Proof photo 1" required hint="e.g. the machine / site" value={photo1} onChange={setPhoto1} />
-        <PhotoCapture label="Proof photo 2" required hint="e.g. the work being done" value={photo2} onChange={setPhoto2} />
+        <PhotoCapture label="Meter photo" required hint="Photo of the hour-meter / mileage" value={photo1} onChange={setPhoto1} />
+        <PhotoCapture label="Photo 2 (optional)" hint="e.g. the machine / site" value={photo2} onChange={setPhoto2} />
 
         <Card className="space-y-3 p-4">
           <Field label="Start time" required hint="Taken from the photo — edit if needed">

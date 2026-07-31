@@ -5,6 +5,7 @@ import { useAuth } from '../../auth/AuthContext.jsx'
 import {
   getTask,
   completeTask,
+  deleteTask,
   listPieceRates,
   listAreas,
   listOperatorMachines,
@@ -42,6 +43,7 @@ export default function CompleteTask() {
   const areas = useLiveQuery(() => listAreas({ companyId: user.companyId }), [user.companyId], [])
   const currency = useLiveQuery(() => getMeta('currency', 'RM'), [], 'RM')
 
+  const [endWorkPhoto, setEndWorkPhoto] = useState(null)
   const [endPhoto, setEndPhoto] = useState(null)
   const [endTime, setEndTime] = useState('')
   const [timeTouched, setTimeTouched] = useState(false)
@@ -63,16 +65,17 @@ export default function CompleteTask() {
     []
   )
 
-  const suggested = endPhoto?.capturedAt || null
+  const suggested = endPhoto?.capturedAt || endWorkPhoto?.capturedAt || null
   useEffect(() => {
     if (!timeTouched && suggested) setEndTime(toLocalInput(suggested))
   }, [suggested, timeTouched])
 
-  // Pre-fill the location from the end photo's GPS, until edited by hand.
+  // Pre-fill the location from an end photo's GPS, until edited by hand.
   useEffect(() => {
     if (locTouched) return
-    if (endPhoto?.gps?.lat != null) setEndLoc(formatLatLng(endPhoto.gps.lat, endPhoto.gps.lng))
-  }, [endPhoto, locTouched])
+    const g = (endPhoto?.gps?.lat != null && endPhoto.gps) || (endWorkPhoto?.gps?.lat != null && endWorkPhoto.gps) || null
+    if (g) setEndLoc(formatLatLng(g.lat, g.lng))
+  }, [endPhoto, endWorkPhoto, locTouched])
 
   const machine = useMemo(() => (machines || []).find((m) => m.id === machineId) || null, [machines, machineId])
   const company = useMemo(
@@ -110,15 +113,21 @@ export default function CompleteTask() {
     )
   }
 
-  // Piece rate + quantity are optional. Everything else is still required.
-  const canSave = endPhoto && endTime && machineId && areaId
+  // Area is only required when the admin has set up areas for this company;
+  // otherwise it's optional. Piece rate + quantity are always optional.
+  const areaRequired = (areas || []).length > 0
+  const canSave = endWorkPhoto && endPhoto && endTime && machineId && (!areaRequired || areaId)
 
   async function submit(e) {
     e.preventDefault()
     if (submitting.current) return
     setError('')
     if (!canSave) {
-      setError('Add the end photo, end time, machine and area.')
+      setError(
+        areaRequired
+          ? 'Add both end photos (proof of work + ending meter), end time, machine and area.'
+          : 'Add both end photos (proof of work + ending meter), end time and machine.'
+      )
       return
     }
     if (durationMins == null) {
@@ -134,8 +143,9 @@ export default function CompleteTask() {
     try {
       await completeTask(id, {
         endTime: endISO,
+        endWorkPhoto,
         endPhoto,
-        endGps: geoFor(endLoc, endPhoto?.gps),
+        endGps: geoFor(endLoc, endPhoto?.gps || endWorkPhoto?.gps),
         machine,
         company,
         pieceRate: rate,
@@ -152,6 +162,21 @@ export default function CompleteTask() {
     }
   }
 
+  // Operators can discard a hanging task they no longer need to finish.
+  async function remove() {
+    if (busy) return
+    if (!window.confirm('Delete this unfinished task? This cannot be undone.')) return
+    setError('')
+    setBusy(true)
+    try {
+      await deleteTask(id)
+      navigate('/open')
+    } catch (err) {
+      setError(err.message || 'Could not delete.')
+      setBusy(false)
+    }
+  }
+
   return (
     <form onSubmit={submit} className="pb-4">
       <PageHeader title="Finish task" subtitle={`Started ${dateTimeOf(task.startTime)}`} onBack={() => navigate('/open')} />
@@ -162,17 +187,20 @@ export default function CompleteTask() {
         <div className="flex gap-2">
           <div className="flex-1">
             <PhotoById id={task.startPhotoId} className="aspect-square w-full" />
-            <p className="mt-1 text-center text-[11px] text-slate-400">Photo 1</p>
+            <p className="mt-1 text-center text-[11px] text-slate-400">Meter · {timeOf(task.startTime)}</p>
           </div>
-          <div className="flex-1">
-            <PhotoById id={task.workPhotoId} className="aspect-square w-full" />
-            <p className="mt-1 text-center text-[11px] text-slate-400">Photo 2 · {timeOf(task.startTime)}</p>
-          </div>
+          {task.workPhotoId && (
+            <div className="flex-1">
+              <PhotoById id={task.workPhotoId} className="aspect-square w-full" />
+              <p className="mt-1 text-center text-[11px] text-slate-400">Photo 2</p>
+            </div>
+          )}
         </div>
       </Card>
 
       <div className="space-y-4">
-        <PhotoCapture label="End photo" required hint="Proof the work is finished" value={endPhoto} onChange={setEndPhoto} />
+        <PhotoCapture label="Proof of work" required hint="Photo showing the finished work" value={endWorkPhoto} onChange={setEndWorkPhoto} />
+        <PhotoCapture label="Ending meter photo" required hint="Photo of the hour-meter / mileage" value={endPhoto} onChange={setEndPhoto} />
 
         <Card className="space-y-4 p-4">
           <Field label="End time" required hint="Taken from the photo — edit if needed">
@@ -243,9 +271,9 @@ export default function CompleteTask() {
             <QuantityInput value={quantity} onChange={setQuantity} placeholder="e.g. 3 or 5+5+10" />
           </Field>
 
-          <Field label="Area" required>
+          <Field label="Area" required={areaRequired} hint={areaRequired ? undefined : 'No areas set — optional'}>
             <Select value={areaId} onChange={(e) => setAreaId(e.target.value)}>
-              <option value="">Choose area…</option>
+              <option value="">{areaRequired ? 'Choose area…' : 'No area'}</option>
               {(areas || []).map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.name}
@@ -270,6 +298,10 @@ export default function CompleteTask() {
 
         <Button full type="submit" disabled={busy || !canSave}>
           {busy ? 'Saving…' : 'Complete task'}
+        </Button>
+
+        <Button full type="button" variant="danger" disabled={busy} onClick={remove}>
+          Delete unfinished task
         </Button>
       </div>
     </form>

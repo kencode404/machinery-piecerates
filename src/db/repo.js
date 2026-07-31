@@ -95,6 +95,7 @@ export async function startTask({ session, startTime, notes, startPhoto, workPho
     endMileage: null,
     endTime: null,
     endGps: emptyGeo(),
+    endWorkPhotoId: null,
     endPhotoId: null,
 
     durationMinutes: null,
@@ -132,15 +133,16 @@ export async function startTask({ session, startTime, notes, startPhoto, workPho
  * Operator completes a hanging task: end-mileage photo + piece rate + quantity
  * + area. Duration is auto-derived from start photo time -> end photo time.
  */
-export async function completeTask(taskId, { endTime, endPhoto, machine, company, pieceRate, quantity, quantityExpr, area, notes, endGps }) {
+export async function completeTask(taskId, { endTime, endWorkPhoto, endPhoto, machine, company, pieceRate, quantity, quantityExpr, area, notes, endGps }) {
   const task = await db.tasks.get(taskId)
   if (!task) throw new Error('Task not found')
   await assertMonthUnlocked(task.monthKey)
 
   const now = nowISO()
+  const endWorkPhotoId = task.endWorkPhotoId || (endWorkPhoto ? uuid() : null)
   const endPhotoId = task.endPhotoId || (endPhoto ? uuid() : null)
   // Operator can edit the end time; otherwise use the end photo's timestamp.
-  const endTimeFinal = endTime || endPhoto?.capturedAt || task.endTime || now
+  const endTimeFinal = endTime || endPhoto?.capturedAt || endWorkPhoto?.capturedAt || task.endTime || now
   const qty = numOrNull(quantity)
   const unitPrice = pieceRate ? numOrNull(pieceRate.price) : null
 
@@ -151,7 +153,8 @@ export async function completeTask(taskId, { endTime, endPhoto, machine, company
     companyId: company?.id ?? machine?.companyId ?? task.companyId ?? null,
     companyName: company?.name ?? task.companyName ?? null,
     endTime: endTimeFinal,
-    endGps: endGps || endPhoto?.gps || task.endGps || emptyGeo(),
+    endGps: endGps || endPhoto?.gps || endWorkPhoto?.gps || task.endGps || emptyGeo(),
+    endWorkPhotoId,
     endPhotoId,
     durationMinutes: minutesBetween(task.startTime, endTimeFinal),
 
@@ -173,6 +176,12 @@ export async function completeTask(taskId, { endTime, endPhoto, machine, company
 
   await db.transaction('rw', db.tasks, db.photos, async () => {
     await db.tasks.update(taskId, patch)
+    if (endWorkPhoto && endWorkPhotoId) {
+      const existing = await db.photos.get(endWorkPhotoId)
+      const row = buildPhoto(endWorkPhotoId, taskId, PhotoKind.END_WORK, endWorkPhoto)
+      if (existing) await db.photos.put({ ...existing, ...row })
+      else await db.photos.add(row)
+    }
     if (endPhoto && endPhotoId) {
       const existing = await db.photos.get(endPhotoId)
       const row = buildPhoto(endPhotoId, taskId, PhotoKind.END_MILEAGE, endPhoto)
@@ -199,6 +208,7 @@ export async function addManualTask(input) {
   const taskId = uuid()
   const startPhotoId = input.startPhoto ? uuid() : null
   const workPhotoId = input.workPhoto ? uuid() : null
+  const endWorkPhotoId = input.endWorkPhoto ? uuid() : null
   const endPhotoId = input.endPhoto ? uuid() : null
 
   const task = {
@@ -221,6 +231,7 @@ export async function addManualTask(input) {
     endMileage: numOrNull(input.endMileage),
     endTime,
     endGps: input.endGps || input.endPhoto?.gps || { ...emptyGeo(), source: GpsSource.MANUAL },
+    endWorkPhotoId,
     endPhotoId,
 
     // Explicit override (hour-meter or direct hours), else derived from times.
@@ -250,6 +261,7 @@ export async function addManualTask(input) {
     await db.tasks.add(task)
     if (input.startPhoto) await db.photos.add(buildPhoto(startPhotoId, taskId, PhotoKind.START_MILEAGE, input.startPhoto))
     if (input.workPhoto) await db.photos.add(buildPhoto(workPhotoId, taskId, PhotoKind.WORK, input.workPhoto))
+    if (input.endWorkPhoto) await db.photos.add(buildPhoto(endWorkPhotoId, taskId, PhotoKind.END_WORK, input.endWorkPhoto))
     if (input.endPhoto) await db.photos.add(buildPhoto(endPhotoId, taskId, PhotoKind.END_MILEAGE, input.endPhoto))
   })
   emitChange()
@@ -288,6 +300,7 @@ export async function updateTask(taskId, patch, photos = {}) {
   const slots = [
     ['startPhoto', 'startPhotoId', PhotoKind.START_MILEAGE],
     ['workPhoto', 'workPhotoId', PhotoKind.WORK],
+    ['endWorkPhoto', 'endWorkPhotoId', PhotoKind.END_WORK],
     ['endPhoto', 'endPhotoId', PhotoKind.END_MILEAGE]
   ]
   for (const [key, idKey] of slots) {

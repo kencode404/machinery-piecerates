@@ -96,6 +96,7 @@ create table if not exists "machinery-piecerate".tasks (
   end_lat double precision,
   end_lng double precision,
   end_gps_source text,
+  end_work_photo_id uuid,
   end_photo_id uuid,
 
   duration_minutes integer,

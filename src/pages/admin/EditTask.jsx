@@ -70,6 +70,7 @@ export default function EditTask() {
   const [zoom, setZoom] = useState(null)
   const [startPhoto, setStartPhoto] = useState(null)
   const [workPhoto, setWorkPhoto] = useState(null)
+  const [endWorkPhoto, setEndWorkPhoto] = useState(null)
   const [endPhoto, setEndPhoto] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -199,17 +200,19 @@ export default function EditTask() {
   function onPhoto(which, photo) {
     if (which === 'start') setStartPhoto(photo)
     else if (which === 'work') setWorkPhoto(photo)
+    else if (which === 'endwork') setEndWorkPhoto(photo)
     else setEndPhoto(photo)
     if (!photo) return
     setF((p) => {
       const next = { ...p, durMode: 'time' }
+      const isEnd = which === 'end' || which === 'endwork'
       if (photo.capturedAt) {
-        if (which === 'end') next.endTime = toLocalInput(photo.capturedAt)
+        if (isEnd) next.endTime = toLocalInput(photo.capturedAt)
         else next.startTime = toLocalInput(photo.capturedAt)
       }
       if (photo.gps?.lat != null) {
         const loc = formatLatLng(photo.gps.lat, photo.gps.lng)
-        if (which === 'end') next.endLoc = loc
+        if (isEnd) next.endLoc = loc
         else next.startLoc = loc
       }
       return next
@@ -274,7 +277,7 @@ export default function EditTask() {
     submitting.current = true
     setBusy(true)
     try {
-      await updateTask(id, patch, { startPhoto, workPhoto, endPhoto })
+      await updateTask(id, patch, { startPhoto, workPhoto, endWorkPhoto, endPhoto })
       // Follow the record to where it now lives — the operator and/or month may
       // have been changed in this edit — instead of snapping to the first operator.
       backToRecords(f.operatorId, startTime ? monthKeyOf(startTime) : task.monthKey)
@@ -300,7 +303,7 @@ export default function EditTask() {
     }
   }
 
-  const hasPhotos = task.startPhotoId || task.workPhotoId || task.endPhotoId
+  const hasPhotos = task.startPhotoId || task.workPhotoId || task.endWorkPhotoId || task.endPhotoId
 
   return (
     <form onSubmit={save} className="pb-4">
@@ -326,10 +329,11 @@ export default function EditTask() {
       {hasPhotos && (
         <Card className="mb-4 p-3">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Photos</p>
-          <div className="grid grid-cols-3 gap-2">
-            <PhotoFigure id={task.startPhotoId} label="Start" onZoom={setZoom} />
-            <PhotoFigure id={task.workPhotoId} label="Work" onZoom={setZoom} />
-            <PhotoFigure id={task.endPhotoId} label="End" onZoom={setZoom} />
+          <div className="grid grid-cols-2 gap-2">
+            <PhotoFigure id={task.startPhotoId} label="Start meter" onZoom={setZoom} />
+            <PhotoFigure id={task.workPhotoId} label="Start photo 2" onZoom={setZoom} />
+            <PhotoFigure id={task.endWorkPhotoId} label="Proof of work" onZoom={setZoom} />
+            <PhotoFigure id={task.endPhotoId} label="End meter" onZoom={setZoom} />
           </div>
         </Card>
       )}
@@ -489,10 +493,11 @@ export default function EditTask() {
           <span className="text-slate-400"> (optional)</span>
         </p>
         <p className="mb-2 text-xs text-slate-400">A photo sets Start/End mode and fills the time + location.</p>
-        <div className="grid grid-cols-3 gap-2">
-          <PhotoCapture compact label="Start" value={startPhoto} onChange={(p) => onPhoto('start', p)} />
-          <PhotoCapture compact label="Work" value={workPhoto} onChange={(p) => onPhoto('work', p)} />
-          <PhotoCapture compact label="End" value={endPhoto} onChange={(p) => onPhoto('end', p)} />
+        <div className="grid grid-cols-2 gap-2">
+          <PhotoCapture compact label="Start meter" value={startPhoto} onChange={(p) => onPhoto('start', p)} />
+          <PhotoCapture compact label="Start photo 2" value={workPhoto} onChange={(p) => onPhoto('work', p)} />
+          <PhotoCapture compact label="Proof of work" value={endWorkPhoto} onChange={(p) => onPhoto('endwork', p)} />
+          <PhotoCapture compact label="End meter" value={endPhoto} onChange={(p) => onPhoto('end', p)} />
         </div>
       </Card>
 

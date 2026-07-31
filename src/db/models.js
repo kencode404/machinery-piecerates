@@ -15,6 +15,7 @@ export const SyncStatus = {
 export const PhotoKind = {
   START_MILEAGE: 'start_mileage',
   WORK: 'work',
+  END_WORK: 'end_work', // proof-of-work photo taken when finishing
   END_MILEAGE: 'end_mileage',
   EXTRA: 'extra'
 }
@@ -112,7 +113,8 @@ export const HOURLY_RATE_UNIT = 'jam'
  * @property {number|null} endMileage
  * @property {string|null} endTime    - ISO; drives duration
  * @property {GeoPoint}    endGps
- * @property {string|null} endPhotoId
+ * @property {string|null} endWorkPhotoId - proof-of-work photo at completion
+ * @property {string|null} endPhotoId     - ending mileage/meter photo
  *
  * @property {number|null} durationMinutes
  *
