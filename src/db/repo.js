@@ -484,6 +484,25 @@ export async function getMonthTasks({ operatorId, operatorIds, monthKey }) {
   return rows
 }
 
+/**
+ * The latest month ("YYYY-MM") that has at least one real claim — a completed
+ * task with a non-zero amount for a still-existing company. Payroll defaults to
+ * this so it doesn't jump to an empty RM0 month at the start of a new month; the
+ * new month only becomes the default (and reachable) once it has a claim.
+ * Returns null when there are no claims yet.
+ */
+export async function getLatestClaimMonth() {
+  const companyIds = new Set((await db.companies.toArray()).map((c) => c.id))
+  const completed = await db.tasks.filter((t) => t.status === TaskStatus.COMPLETED).toArray()
+  let max = null
+  for (const t of completed) {
+    if ((Number(t.amount) || 0) === 0) continue // RM0 work isn't a claim
+    if (t.companyId && !companyIds.has(t.companyId)) continue // deleted company
+    if (!max || t.monthKey > max) max = t.monthKey
+  }
+  return max
+}
+
 /** All tasks whose work month falls in the given calendar year (for the dashboard). */
 export function getYearTasks(year) {
   return db.tasks.where('monthKey').between(`${year}-01`, `${year}-12`, true, true).toArray()

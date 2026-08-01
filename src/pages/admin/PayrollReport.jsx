@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { getMonthTasks, listOperators, listCompanies, listClaims, isMonthLocked, setMonthLock } from '../../db/repo.js'
+import { getMonthTasks, listOperators, listCompanies, listClaims, isMonthLocked, setMonthLock, getLatestClaimMonth } from '../../db/repo.js'
 import { getMeta } from '../../db/database.js'
 import { TaskStatus } from '../../db/models.js'
 import { monthKeyOf, monthLabel, shiftMonth, minRetainedMonthKey, formatMoney } from '../../lib/format.js'
@@ -83,15 +83,30 @@ export default function PayrollReport() {
   const operators = useLiveQuery(() => listOperators({ includeInactive: true }), [], [])
   const companies = useLiveQuery(() => listCompanies({ includeInactive: true }), [], undefined)
   const claims = useLiveQuery(() => listClaims({ monthKey }), [monthKey], [])
+  // Latest month that actually has a claim (non-zero). undefined = still loading.
+  const latestClaimMonth = useLiveQuery(() => getLatestClaimMonth(), [], undefined)
 
   const locked = useLiveQuery(() => isMonthLocked(monthKey), [monthKey], false)
+
+  // On first load, if the current month has no claim yet, land on the latest
+  // month that does — so a new month starts on last month's payroll until it has
+  // its first claim. Runs once; the operator can still navigate freely after.
+  const didInitMonth = useRef(false)
+  useEffect(() => {
+    if (didInitMonth.current || latestClaimMonth === undefined) return
+    didInitMonth.current = true
+    if (latestClaimMonth && latestClaimMonth < thisMonth()) setMonthKey(latestClaimMonth)
+  }, [latestClaimMonth])
 
   const opById = new Map((operators || []).map((o) => [o.id, o]))
   const claimByOp = new Map((claims || []).map((c) => [c.operatorId, c]))
   // Existing companies only — once loaded, work from deleted companies is dropped.
   const companyIds = companies ? new Set(companies.map((c) => c.id)) : null
   const report = buildPayroll(tasks || [], { opById, claimByOp, companyIds })
-  const atCurrent = monthKey >= thisMonth()
+  // Don't let "next" reach an empty new month — cap at the latest month with a
+  // claim (or the current month when there are no claims at all yet).
+  const forwardCap = latestClaimMonth && latestClaimMonth < thisMonth() ? latestClaimMonth : thisMonth()
+  const atCurrent = monthKey >= forwardCap
   const atFloor = monthKey <= minRetainedMonthKey() // 3-year retention limit
 
   const lockMonth = async () => {
