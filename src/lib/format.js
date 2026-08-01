@@ -26,24 +26,33 @@ export function monthLabel(monthKey) {
 
 /**
  * Default filename for a "Save as PDF" claim print. Company initials are the
- * first letter of each word ("Meridian Palma Sdn Bhd" -> "MPSB").
- *   - Combined per-company: "MPSB Machinery Piece Rates (Jul 2026)"
- *   - Single operator:      "Ali Bin Abu MPSB Claim (Jul 2026)"
+ * first letter of each word, with a location suffix in parentheses preserved so
+ * branches of the same company get distinct files:
+ *   "Meridian Palma Sdn Bhd"        -> "MPSB"
+ *   "Mega Jutamas Sdn Bhd (Suai)"   -> "MJSB (Suai)"
+ * Examples:
+ *   - Combined per-company: "MJSB (Suai) Machinery Piece Rates (Jul 2026)"
+ *   - Single operator:      "Ali Bin Abu MJSB (Suai) Claim (Jul 2026)"
  */
 export function claimPdfName(companyName, monthKey, operatorName) {
-  // Drop any parenthetical suffix (e.g. "MJSB (Suai)") before taking initials.
-  const initials = (companyName || '')
+  const name = companyName || ''
+  // Keep a trailing location suffix like "(Suai)" verbatim, but take initials
+  // from the rest of the name (so it stays "MJSB", not "MJSBS").
+  const locMatch = name.match(/\(([^)]*)\)/)
+  const loc = locMatch ? `(${locMatch[1].trim()})` : ''
+  const initials = name
     .replace(/\([^)]*\)/g, ' ')
     .split(/\s+/)
     .filter(Boolean)
     .map((w) => w[0])
     .join('')
     .toUpperCase()
+  const base = `${initials}${loc ? ` ${loc}` : ''}`.trim() // e.g. "MJSB (Suai)"
   const [y, m] = monthKey.split('-').map(Number)
   const monShort = new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'short' })
   const when = `(${monShort} ${y})`
-  if (operatorName) return `${operatorName} ${initials || ''} Claim ${when}`.replace(/\s+/g, ' ').trim()
-  return `${initials || 'Claim'} Machinery Piece Rates ${when}`
+  if (operatorName) return `${operatorName} ${base} Claim ${when}`.replace(/\s+/g, ' ').trim()
+  return `${base || 'Claim'} Machinery Piece Rates ${when}`
 }
 
 /** Shift a "YYYY-MM" key by n months. */
