@@ -32,7 +32,11 @@ function buildAutoRows(tasks) {
     r.qty += Number(t.quantity) || 0
     r.amount += Number(t.amount) || 0
   }
-  return [...map.values()].sort((a, b) => a.work.localeCompare(b.work) || a.loc.localeCompare(b.loc))
+  // Hide rows that contribute nothing — e.g. work completed without a quantity
+  // (0 jumlah unit and 0 amount) — so they don't clutter the claim.
+  return [...map.values()]
+    .filter((r) => Number(r.qty) !== 0 || Number(r.amount) !== 0)
+    .sort((a, b) => a.work.localeCompare(b.work) || a.loc.localeCompare(b.loc))
 }
 
 // One operator's printable claim sheet (read-only — uses saved data).

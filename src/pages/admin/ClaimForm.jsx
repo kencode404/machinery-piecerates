@@ -70,7 +70,11 @@ export default function ClaimForm() {
       r.amount += Number(t.amount) || 0
     }
     // Keep each work type's areas together (Phase 1, Phase 2, …).
-    return [...map.values()].sort((a, b) => a.work.localeCompare(b.work) || a.loc.localeCompare(b.loc))
+    // Hide rows that contribute nothing — e.g. work completed without a quantity
+    // (0 jumlah unit and 0 amount) — so they don't clutter the claim.
+    return [...map.values()]
+      .filter((r) => Number(r.qty) !== 0 || Number(r.amount) !== 0)
+      .sort((a, b) => a.work.localeCompare(b.work) || a.loc.localeCompare(b.loc))
   }, [tasks])
 
   const machines = useMemo(() => {
