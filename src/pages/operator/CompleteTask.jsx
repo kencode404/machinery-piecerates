@@ -17,7 +17,7 @@ import {
 } from '../../db/repo.js'
 import { TaskStatus, GpsSource } from '../../db/models.js'
 import { minutesBetween, formatHours } from '../../lib/duration.js'
-import { timeOf, dateTimeOf, formatMoney, toLocalInput, fromLocalInput, formatLatLng, parseLatLng } from '../../lib/format.js'
+import { timeOf, dateTimeOf, formatMoney, formatRate, toLocalInput, fromLocalInput, formatLatLng, parseLatLng } from '../../lib/format.js'
 import { QuantityInput } from '../../components/QuantityInput.jsx'
 import { evalExpr, isExpression } from '../../lib/expr.js'
 import { requestSync } from '../../sync/syncEngine.js'
@@ -420,7 +420,7 @@ export default function CompleteTask() {
               <option value="">{machineId ? 'Choose work type…' : 'Pick a machine first'}</option>
               {rateOptions.map((r) => (
                 <option key={r.id} value={r.id}>
-                  {r.name} — {formatMoney(r.price, currency)}/{r.unit}
+                  {r.name} — {formatRate(r.price, currency)}/{r.unit}
                 </option>
               ))}
             </Select>

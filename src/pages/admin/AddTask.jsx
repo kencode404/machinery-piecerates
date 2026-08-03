@@ -4,7 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { addManualTask, listAreas, listOperators, listMachines, listCompanies, listPieceRates, kerjaJamRate } from '../../db/repo.js'
 import { getMeta } from '../../db/database.js'
 import { CreatedBy, GpsSource } from '../../db/models.js'
-import { fromLocalInput, toLocalInput, formatMoney, formatLatLng, parseLatLng } from '../../lib/format.js'
+import { fromLocalInput, toLocalInput, formatMoney, formatRate, formatLatLng, parseLatLng } from '../../lib/format.js'
 
 const geoFor = (loc, fallback) => {
   const { lat, lng } = parseLatLng(loc)
@@ -358,7 +358,7 @@ export default function AddTask() {
             <option value="">{f.machineId ? 'Choose work type…' : 'Pick a machine first'}</option>
             {rateOptions.map((r) => (
               <option key={r.id} value={r.id}>
-                {r.name} — {formatMoney(r.price, currency)}/{r.unit}
+                {r.name} — {formatRate(r.price, currency)}/{r.unit}
               </option>
             ))}
           </Select>

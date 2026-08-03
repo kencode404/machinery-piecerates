@@ -16,7 +16,7 @@ import {
 } from '../../db/repo.js'
 import { getMeta } from '../../db/database.js'
 import { TaskStatus, GpsSource, HOURLY_RATE_NAME } from '../../db/models.js'
-import { toLocalInput, fromLocalInput, formatMoney, dayKeyOf, monthKeyOf, formatLatLng, parseLatLng } from '../../lib/format.js'
+import { toLocalInput, fromLocalInput, formatMoney, formatRate, dayKeyOf, monthKeyOf, formatLatLng, parseLatLng } from '../../lib/format.js'
 import { minutesBetween, formatHours } from '../../lib/duration.js'
 import { useAuth } from '../../auth/AuthContext.jsx'
 import PageHeader from '../../components/PageHeader.jsx'
@@ -456,7 +456,7 @@ export default function EditTask() {
             <option value="">None</option>
             {rateOptions.map((r) => (
               <option key={r.id} value={r.id}>
-                {r.name} — {formatMoney(r.price, currency)}/{r.unit}
+                {r.name} — {formatRate(r.price, currency)}/{r.unit}
                 {r.active ? '' : ' (inactive)'}
               </option>
             ))}

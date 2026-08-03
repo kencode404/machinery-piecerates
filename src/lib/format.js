@@ -147,6 +147,16 @@ export function formatMoney(n, currency = 'RM') {
   return `${currency} ${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
+/**
+ * Format a piece-rate / unit price at full precision — some rates carry more
+ * than 2 decimals and must not be rounded. Min 2 decimals, trailing zeros
+ * trimmed beyond that (e.g. "RM 0.1625", "RM 10.00").
+ */
+export function formatRate(n, currency = 'RM') {
+  const v = Number(n) || 0
+  return `${currency} ${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 10 })}`
+}
+
 /** Format a quantity with its unit, e.g. "3 m". */
 export function formatQty(n, unit = '') {
   const v = Number(n)

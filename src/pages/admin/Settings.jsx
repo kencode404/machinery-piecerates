@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useAuth } from '../../auth/AuthContext.jsx'
 import { getMeta } from '../../db/database.js'
-import { formatMoney } from '../../lib/format.js'
+import { formatMoney, formatRate } from '../../lib/format.js'
 import { isDistanceUnit } from '../../lib/dashboard.js'
 import {
   listPieceRates,
@@ -304,7 +304,7 @@ function MachineDetail({ companyId, machineId, onBack }) {
             key={r.id}
             title={r.name}
             dim={!r.active}
-            subtitle={`${formatMoney(r.price, CURRENCY)} / ${r.unit}${r.active ? '' : ' · hidden'}`}
+            subtitle={`${formatRate(r.price, CURRENCY)} / ${r.unit}${r.active ? '' : ' · hidden'}`}
             onClick={() => setRateEditing(r)}
           />
         ))}

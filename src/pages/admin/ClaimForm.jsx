@@ -9,6 +9,9 @@ import { Button, Spinner } from '../../components/ui.jsx'
 import { IconPlus, IconTrash, IconLock } from '../../components/icons.jsx'
 
 const money = (n) => (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+// Rate/unit price shows its full precision (some rates have >2 decimals); the
+// subjumlah still rounds to 2. Min 2 decimals, trailing zeros trimmed after that.
+const rateFmt = (n) => (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 10 })
 const qtyFmt = (n) => (Number(n) || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })
 const sub = (rate, qty) => (Number(rate) || 0) * (Number(qty) || 0)
 const todayStr = () => {
@@ -312,7 +315,7 @@ export default function ClaimForm() {
                 <td className={`${cell} text-center`}>{i + 1}</td>
                 <td className={cell}>{r.desc}</td>
                 <td className={`${cell} text-center`}>{r.unit}</td>
-                <td className={numCell}>{money(r.rate)}</td>
+                <td className={numCell}>{rateFmt(r.rate)}</td>
                 <td className={numCell}>{qtyFmt(r.qty)}</td>
                 <td className={numCell}>{money(r.amount)}</td>
               </tr>
