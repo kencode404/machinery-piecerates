@@ -160,7 +160,7 @@ function CompanyDashboard({ company, moneyFmt }) {
         </Section>
 
         {/* Work-hours mix: Kerja jam (red) stacked under other piece-rate work (blue) */}
-        <Section title="Jam kerja: Kerja jam (merah) + kadar kerja (biru)">
+        <Section title="Jam kerja: Kerja jam (merah) + Kerja piece rated (biru)">
           {company.durationByOperator.length === 0 ? (
             <Hint>No hours recorded yet.</Hint>
           ) : (

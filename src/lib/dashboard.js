@@ -220,7 +220,7 @@ export function buildDashboard({ tasks = [], operators = [], companies = [], yea
           series: [
             // Hours shown to 1 decimal, same convention as the rest of the app.
             { name: 'Kerja jam', color: '#dc2626', values: kerjaJam.map(round1) },
-            { name: 'Kadar kerja (lain)', color: '#2563eb', values: other.map(round1) }
+            { name: 'Kerja piece rated', color: '#2563eb', values: other.map(round1) }
           ]
         }
       })
