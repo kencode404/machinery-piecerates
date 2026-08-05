@@ -131,7 +131,7 @@ export function BarChart({ title, series = [], unit = '', formatValue, thin = fa
           )}
         </div>
       ) : (
-        <p className="px-1 py-6 text-center text-xs text-slate-400">No data</p>
+        <p className="px-1 py-6 text-center text-xs text-slate-500">No data</p>
       )}
 
       {/* legend */}
@@ -278,7 +278,7 @@ export function StackedAreaChart({ title, series = [], unit = '', formatValue })
           )}
         </div>
       ) : (
-        <p className="px-1 py-6 text-center text-xs text-slate-400">No data</p>
+        <p className="px-1 py-6 text-center text-xs text-slate-500">No data</p>
       )}
 
       {/* legend */}

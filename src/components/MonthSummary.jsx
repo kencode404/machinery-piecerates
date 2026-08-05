@@ -46,7 +46,7 @@ export default function MonthSummary({
       <Card className="p-4">
         <div className="flex items-center justify-between">
           <button
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 active:bg-slate-100 disabled:opacity-30"
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 active:bg-slate-100 disabled:opacity-30"
             onClick={() => onMonthChange(shiftMonth(monthKey, -1))}
             disabled={atFloor}
             aria-label="Previous month"
@@ -60,7 +60,7 @@ export default function MonthSummary({
             </p>
           </div>
           <button
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 active:bg-slate-100 disabled:opacity-30"
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 active:bg-slate-100 disabled:opacity-30"
             onClick={() => onMonthChange(shiftMonth(monthKey, 1))}
             disabled={atCurrent}
             aria-label="Next month"
@@ -166,7 +166,7 @@ function RateGroup({ group, currency, showOperator, onRecordClick }) {
             )}
             {group.pieceRateName}
           </p>
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-slate-500">
             {formatQty(group.totalQty, group.unit)}
             {multiple ? ` · ${group.records.length} entries` : ''}
           </p>
@@ -230,7 +230,7 @@ function RecordRow({ task, currency, showOperator, onClick }) {
           <Badge color={createdByBadge(task.createdBy).color} className="px-1.5 py-0 text-[10px]">
             {createdByBadge(task.createdBy).text}
           </Badge>
-          <span className="truncate text-[11px] text-slate-400">
+          <span className="truncate text-[11px] text-slate-500">
             {task.areaName || 'No area'}
             {task.machineName ? ` · ${task.machineName}` : ''}
             {showOperator ? ` · ${task.operatorName}` : ''}

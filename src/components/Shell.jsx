@@ -46,7 +46,7 @@ function TopBar({ role }) {
       <div className="flex h-14 items-center justify-between px-4">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-slate-800">{user?.name || 'User'}</p>
-          <p className="truncate text-[11px] uppercase tracking-wide text-slate-400">
+          <p className="truncate text-[11px] uppercase tracking-wide text-slate-500">
             {role === 'admin'
               ? 'Administrator'
               : role === 'siteadmin'
@@ -61,7 +61,7 @@ function TopBar({ role }) {
               logout()
               navigate('/login', { replace: true })
             }}
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 active:bg-slate-100"
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 active:bg-slate-100"
             aria-label="Log out"
           >
             <IconLogout width={20} height={20} />
@@ -146,7 +146,7 @@ function BottomNav({ items }) {
             className={({ isActive }) =>
               [
                 'flex flex-1 flex-col items-center justify-center gap-0.5 py-2.5 text-[11px] font-medium',
-                isActive ? 'text-brand' : 'text-slate-400'
+                isActive ? 'text-brand' : 'text-slate-500'
               ].join(' ')
             }
           >

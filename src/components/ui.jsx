@@ -5,9 +5,9 @@ const cx = (...c) => c.filter(Boolean).join(' ')
 
 const VARIANTS = {
   primary: 'bg-brand text-white active:bg-brand-dark disabled:bg-slate-300',
-  secondary: 'bg-white text-slate-800 border border-slate-300 active:bg-slate-100 disabled:text-slate-400',
+  secondary: 'bg-white text-slate-800 border border-slate-300 active:bg-slate-100 disabled:text-slate-500',
   danger: 'bg-red-600 text-white active:bg-red-700 disabled:bg-red-300',
-  ghost: 'bg-transparent text-brand active:bg-brand-light disabled:text-slate-400'
+  ghost: 'bg-transparent text-brand active:bg-brand-light disabled:text-slate-500'
 }
 
 const SIZES = {
@@ -51,14 +51,14 @@ export function Field({ label, hint, error, required, children }) {
         </span>
       )}
       {children}
-      {hint && !error && <span className="mt-1 block text-xs text-slate-400">{hint}</span>}
+      {hint && !error && <span className="mt-1 block text-xs text-slate-500">{hint}</span>}
       {error && <span className="mt-1 block text-xs text-red-500">{error}</span>}
     </label>
   )
 }
 
 const inputBase =
-  'w-full rounded-xl border border-slate-300 bg-white px-3.5 h-12 text-slate-900 placeholder:text-slate-400 ' +
+  'w-full rounded-xl border border-slate-300 bg-white px-3.5 h-12 text-slate-900 placeholder:text-slate-500 ' +
   'focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30 disabled:bg-slate-100'
 
 export function TextInput({ className = '', ...props }) {
@@ -131,7 +131,7 @@ export function EmptyState({ title, subtitle, action }) {
   return (
     <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
       <p className="text-base font-medium text-slate-700">{title}</p>
-      {subtitle && <p className="mt-1 max-w-xs text-sm text-slate-400">{subtitle}</p>}
+      {subtitle && <p className="mt-1 max-w-xs text-sm text-slate-500">{subtitle}</p>}
       {action && <div className="mt-4">{action}</div>}
     </div>
   )

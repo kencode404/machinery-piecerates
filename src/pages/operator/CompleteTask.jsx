@@ -338,16 +338,16 @@ export default function CompleteTask() {
 
       {/* Reference: the two start photos */}
       <Card className="mb-4 p-3">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Start of task</p>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Start of task</p>
         <div className="flex gap-2">
           <div className="flex-1">
             <PhotoById id={task.startPhotoId} className="aspect-square w-full" />
-            <p className="mt-1 text-center text-[11px] text-slate-400">Meter · {timeOf(task.startTime)}</p>
+            <p className="mt-1 text-center text-[11px] text-slate-500">Meter · {timeOf(task.startTime)}</p>
           </div>
           {task.workPhotoId && (
             <div className="flex-1">
               <PhotoById id={task.workPhotoId} className="aspect-square w-full" />
-              <p className="mt-1 text-center text-[11px] text-slate-400">Photo 2</p>
+              <p className="mt-1 text-center text-[11px] text-slate-500">Photo 2</p>
             </div>
           )}
         </div>
@@ -462,7 +462,7 @@ export default function CompleteTask() {
           {busy ? 'Saving…' : 'Complete task'}
         </Button>
 
-        <p className="text-center text-xs text-slate-400">
+        <p className="text-center text-xs text-slate-500">
           Progress saves automatically — you can leave and finish this task later.
         </p>
 

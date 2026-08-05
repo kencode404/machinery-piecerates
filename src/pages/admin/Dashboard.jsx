@@ -51,7 +51,7 @@ export default function Dashboard() {
       <Card className="p-4">
         <div className="flex items-center justify-between">
           <button
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 active:bg-slate-100 disabled:opacity-30"
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 active:bg-slate-100 disabled:opacity-30"
             onClick={() => setYear((y) => y - 1)}
             disabled={atFloor}
             aria-label="Previous year"
@@ -60,7 +60,7 @@ export default function Dashboard() {
           </button>
           <p className="text-2xl font-bold text-slate-900">{year}</p>
           <button
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 active:bg-slate-100 disabled:opacity-30"
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 active:bg-slate-100 disabled:opacity-30"
             onClick={() => setYear((y) => y + 1)}
             disabled={atCurrent}
             aria-label="Next year"
@@ -68,7 +68,7 @@ export default function Dashboard() {
             <IconChevron width={20} height={20} />
           </button>
         </div>
-        <p className="mt-1 text-center text-xs text-slate-400">Operator comparison · Jan–Dec</p>
+        <p className="mt-1 text-center text-xs text-slate-500">Operator comparison · Jan–Dec</p>
       </Card>
 
       {loading ? (
@@ -186,12 +186,12 @@ const currencyHint = (o) => (o.hasOld ? 'RM' : 'RM · new only')
 function Section({ title, children }) {
   return (
     <div>
-      <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">{title}</p>
+      <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</p>
       {children}
     </div>
   )
 }
 
 function Hint({ children }) {
-  return <p className="text-xs text-slate-400">{children}</p>
+  return <p className="text-xs text-slate-500">{children}</p>
 }

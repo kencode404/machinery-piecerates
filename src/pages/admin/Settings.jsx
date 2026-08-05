@@ -69,8 +69,8 @@ function ListRow({ onClick, title, subtitle, dim }) {
       className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2.5 text-left active:bg-slate-50"
     >
       <div className="min-w-0">
-        <p className={`truncate font-medium ${dim ? 'text-slate-400' : 'text-slate-800'}`}>{title}</p>
-        {subtitle && <p className="truncate text-xs text-slate-400">{subtitle}</p>}
+        <p className={`truncate font-medium ${dim ? 'text-slate-500' : 'text-slate-800'}`}>{title}</p>
+        {subtitle && <p className="truncate text-xs text-slate-500">{subtitle}</p>}
       </div>
       <IconChevron width={16} height={16} className="shrink-0 text-slate-300" />
     </button>
@@ -82,7 +82,7 @@ function SectionCard({ title, count, onAdd, addLabel, children }) {
     <Card className="p-4">
       <div className="mb-2 flex items-center justify-between">
         <h2 className="font-semibold text-slate-800">
-          {title} {count != null && <span className="text-sm font-normal text-slate-400">{count}</span>}
+          {title} {count != null && <span className="text-sm font-normal text-slate-500">{count}</span>}
         </h2>
       </div>
       <div className="space-y-2">{children}</div>
@@ -123,7 +123,7 @@ function SettingsHome({ onOpenCompany }) {
           />
         ))}
         {companies && companies.length === 0 && (
-          <p className="text-sm text-slate-400">No companies yet. Add one to begin.</p>
+          <p className="text-sm text-slate-500">No companies yet. Add one to begin.</p>
         )}
       </SectionCard>
 
@@ -194,7 +194,7 @@ function CompanyDetail({ companyId, onBack, onOpenMachine }) {
             />
           )
         })}
-        {operators.length === 0 && <p className="text-sm text-slate-400">No operators in this company.</p>}
+        {operators.length === 0 && <p className="text-sm text-slate-500">No operators in this company.</p>}
       </SectionCard>
 
       <SectionCard
@@ -213,7 +213,7 @@ function CompanyDetail({ companyId, onBack, onOpenMachine }) {
           />
         ))}
         {machines && machines.length === 0 && (
-          <p className="text-sm text-slate-400">No machines in this company.</p>
+          <p className="text-sm text-slate-500">No machines in this company.</p>
         )}
       </SectionCard>
 
@@ -226,7 +226,7 @@ function CompanyDetail({ companyId, onBack, onOpenMachine }) {
         {(areas || []).map((a) => (
           <ListRow key={a.id} title={a.name} dim={!a.active} onClick={() => setAreaEditing(a)} />
         ))}
-        {areas && areas.length === 0 && <p className="text-sm text-slate-400">No areas in this company.</p>}
+        {areas && areas.length === 0 && <p className="text-sm text-slate-500">No areas in this company.</p>}
       </SectionCard>
 
       <CompanyEditor
@@ -308,7 +308,7 @@ function MachineDetail({ companyId, machineId, onBack }) {
             onClick={() => setRateEditing(r)}
           />
         ))}
-        {rates && rates.length === 0 && <p className="text-sm text-slate-400">No piece rates yet.</p>}
+        {rates && rates.length === 0 && <p className="text-sm text-slate-500">No piece rates yet.</p>}
       </SectionCard>
 
       <MachineEditor
@@ -567,7 +567,7 @@ function OperatorEditor({ editing, companyId, machines, onClose }) {
                 {m.active ? '' : ' (inactive)'}
               </label>
             ))}
-            {machines.length === 0 && <p className="text-xs text-slate-400">Add machines to this company first.</p>}
+            {machines.length === 0 && <p className="text-xs text-slate-500">Add machines to this company first.</p>}
           </div>
         </div>
         <label className="flex items-center gap-2 text-sm text-slate-600">
@@ -688,7 +688,7 @@ function RateEditor({ editing, machineId, onClose }) {
               })}
             </div>
             {normUnit(unit) && (
-              <p className="mt-1 text-[11px] text-slate-400">
+              <p className="mt-1 text-[11px] text-slate-500">
                 {isDistanceUnit(unit)
                   ? '→ groups into “Road & Drain works” (m/jam)'
                   : `→ its own speed chart (${normUnit(unit)}/jam)`}
@@ -752,7 +752,7 @@ function SecuritySection() {
       {open && (
         <div className="space-y-3 border-t border-slate-100 p-4">
           <p className="text-sm font-medium text-slate-600">Change HQ admin password</p>
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-slate-500">
             This is your Supabase Auth account — the new password works on every device.
           </p>
           <Field label="New password">
@@ -773,11 +773,11 @@ function AboutSection() {
   const lastSyncAt = useLiveQuery(() => getMeta('lastSyncAt', null), [], null)
   return (
     <Card className="p-4">
-      <p className="text-sm text-slate-500">Machinery Piece Rates · v0.1</p>
+      <p className="text-sm text-slate-500">Machinery Piece Rates · v{import.meta.env.VITE_APP_VERSION}</p>
       <p className="text-sm text-slate-500">
         Last successful sync: {lastSyncAt ? new Date(lastSyncAt).toLocaleString() : 'never'}
       </p>
-      <p className="mt-1 text-xs text-slate-400">Records are saved on the device first and sync automatically when online.</p>
+      <p className="mt-1 text-xs text-slate-500">Records are saved on the device first and sync automatically when online.</p>
     </Card>
   )
 }

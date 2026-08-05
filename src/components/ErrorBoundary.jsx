@@ -36,7 +36,7 @@ export class ErrorBoundary extends Component {
           <p className="mt-2 text-sm text-slate-500">
             The app hit an unexpected error. Reloading usually fixes it. If not, log out and reload.
           </p>
-          <pre className="mt-3 max-h-28 overflow-auto rounded-lg bg-slate-50 p-2 text-left text-[11px] text-slate-400">
+          <pre className="mt-3 max-h-28 overflow-auto rounded-lg bg-slate-50 p-2 text-left text-[11px] text-slate-500">
             {String(this.state.error?.message || this.state.error)}
           </pre>
           <button

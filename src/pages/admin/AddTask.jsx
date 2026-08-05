@@ -390,9 +390,9 @@ export default function AddTask() {
       {/* Optional photos — small compact 3-up box */}
       <Card className="mt-4 p-4">
         <p className="mb-1 text-sm font-medium text-slate-700">
-          Photos<span className="text-slate-400"> (optional)</span>
+          Photos<span className="text-slate-500"> (optional)</span>
         </p>
-        <p className="mb-2 text-xs text-slate-400">A photo sets Start/End mode and fills the time + GPS.</p>
+        <p className="mb-2 text-xs text-slate-500">A photo sets Start/End mode and fills the time + GPS.</p>
         <div className="grid grid-cols-2 gap-2">
           <PhotoCapture compact label="Start meter" value={startPhoto} onChange={(p) => onPhoto('start', p)} />
           <PhotoCapture compact label="Start photo 2" value={workPhoto} onChange={(p) => onPhoto('work', p)} />

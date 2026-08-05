@@ -130,7 +130,7 @@ export default function PayrollReport() {
       <Card className="p-4">
         <div className="flex items-center justify-between">
           <button
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 active:bg-slate-100 disabled:opacity-30"
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 active:bg-slate-100 disabled:opacity-30"
             onClick={() => setMonthKey(shiftMonth(monthKey, -1))}
             disabled={atFloor}
             aria-label="Previous month"
@@ -140,10 +140,10 @@ export default function PayrollReport() {
           <div className="text-center">
             <p className="text-sm font-semibold text-slate-700">{monthLabel(monthKey)}</p>
             <p className="text-2xl font-bold text-slate-900">{formatMoney(report.grandTotal, currency)}</p>
-            <p className="text-xs text-slate-400">{report.operatorCount} operators</p>
+            <p className="text-xs text-slate-500">{report.operatorCount} operators</p>
           </div>
           <button
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 active:bg-slate-100 disabled:opacity-30"
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 active:bg-slate-100 disabled:opacity-30"
             onClick={() => setMonthKey(shiftMonth(monthKey, 1))}
             disabled={atCurrent}
             aria-label="Next month"
@@ -202,7 +202,7 @@ export default function PayrollReport() {
                 >
                   <div className="min-w-0">
                     <p className="truncate font-medium text-slate-800">{o.name}</p>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-slate-500">
                       {formatHours(o.minutes)} · {o.count} record{o.count === 1 ? '' : 's'}
                     </p>
                   </div>

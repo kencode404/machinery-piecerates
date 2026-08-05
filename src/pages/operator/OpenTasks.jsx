@@ -38,7 +38,7 @@ export default function OpenTasks() {
                 <SyncStatusDot status={t.syncStatus} />
               </div>
               <p className="mt-1 truncate text-sm font-medium text-slate-700">Started {dateTimeOf(t.startTime)}</p>
-              <p className="truncate text-xs text-slate-400">Tap to add the end photo &amp; finish</p>
+              <p className="truncate text-xs text-slate-500">Tap to add the end photo &amp; finish</p>
             </div>
             <IconChevron width={20} height={20} className="text-slate-300" />
           </Card>

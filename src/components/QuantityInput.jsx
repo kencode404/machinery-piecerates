@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { evalExpr, formatResult } from '../lib/expr.js'
 
 const inputBase =
-  'w-full rounded-xl border border-slate-300 bg-white px-3.5 h-12 text-slate-900 placeholder:text-slate-400 ' +
+  'w-full rounded-xl border border-slate-300 bg-white px-3.5 h-12 text-slate-900 placeholder:text-slate-500 ' +
   'focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30 disabled:bg-slate-100'
 
 // Calculator-style numeric field. Type an arithmetic expression (e.g. "5+5+10-6");

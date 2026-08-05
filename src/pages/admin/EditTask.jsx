@@ -328,7 +328,7 @@ export default function EditTask() {
 
       {hasPhotos && (
         <Card className="mb-4 p-3">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Photos</p>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Photos</p>
           <div className="grid grid-cols-2 gap-2">
             <PhotoFigure id={task.startPhotoId} label="Start meter" onZoom={setZoom} />
             <PhotoFigure id={task.workPhotoId} label="Start photo 2" onZoom={setZoom} />
@@ -379,7 +379,7 @@ export default function EditTask() {
         </Field>
       </Card>
 
-      <p className="mb-1 mt-4 px-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Duration</p>
+      <p className="mb-1 mt-4 px-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Duration</p>
       <Card className="space-y-4 p-4">
         <div>
           <p className="mb-1.5 text-sm font-medium text-slate-700">How is the duration set?</p>
@@ -449,7 +449,7 @@ export default function EditTask() {
         </div>
       </Card>
 
-      <p className="mb-1 mt-4 px-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Work</p>
+      <p className="mb-1 mt-4 px-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Work</p>
       <Card className="space-y-4 p-4">
         <Field label="Piece rate" hint={f.machineId ? undefined : 'Choose a machine first'}>
           <Select value={f.rateId} onChange={set('rateId')} disabled={!f.machineId}>
@@ -490,9 +490,9 @@ export default function EditTask() {
       <Card className="mt-4 p-4">
         <p className="mb-1 text-sm font-medium text-slate-700">
           {hasPhotos ? 'Replace photos' : 'Add photos'}
-          <span className="text-slate-400"> (optional)</span>
+          <span className="text-slate-500"> (optional)</span>
         </p>
-        <p className="mb-2 text-xs text-slate-400">A photo sets Start/End mode and fills the time + location.</p>
+        <p className="mb-2 text-xs text-slate-500">A photo sets Start/End mode and fills the time + location.</p>
         <div className="grid grid-cols-2 gap-2">
           <PhotoCapture compact label="Start meter" value={startPhoto} onChange={(p) => onPhoto('start', p)} />
           <PhotoCapture compact label="Start photo 2" value={workPhoto} onChange={(p) => onPhoto('work', p)} />
@@ -541,7 +541,7 @@ function PhotoFigure({ id, label, onZoom }) {
   return (
     <div>
       <PhotoById id={id} className="aspect-square w-full" onZoom={onZoom} />
-      <p className="mt-1 text-center text-[10px] text-slate-400">{label}</p>
+      <p className="mt-1 text-center text-[10px] text-slate-500">{label}</p>
     </div>
   )
 }

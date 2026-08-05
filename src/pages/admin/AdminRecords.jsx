@@ -153,7 +153,7 @@ export default function AdminRecords() {
             )
           })}
           {shownOperators.length === 0 && (
-            <span className="px-3 py-2.5 text-sm text-slate-400">No operators</span>
+            <span className="px-3 py-2.5 text-sm text-slate-500">No operators</span>
           )}
         </div>
       </Card>

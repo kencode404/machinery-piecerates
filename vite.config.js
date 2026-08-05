@@ -1,12 +1,17 @@
+import { readFileSync } from 'node:fs'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+
+// Expose the package.json version to the app (shown in Settings → About).
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url)))
 
 // https://vitejs.dev/config/
 // `base` is "/" locally, but "/<repo>/" on GitHub Pages — the deploy workflow
 // sets VITE_BASE to the repo name so assets resolve under the sub-path.
 export default defineConfig({
   base: process.env.VITE_BASE || '/',
+  define: { 'import.meta.env.VITE_APP_VERSION': JSON.stringify(pkg.version) },
   plugins: [
     react(),
     VitePWA({

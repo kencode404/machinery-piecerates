@@ -19,7 +19,7 @@ export default function Login() {
         <div className="mb-8 text-center">
           <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="" className="mx-auto h-16 w-16 rounded-2xl" />
           <h1 className="mt-3 text-xl font-bold text-slate-800">Machinery Piece Rates</h1>
-          <p className="text-sm text-slate-400">Record your work — even offline</p>
+          <p className="text-sm text-slate-500">Record your work — even offline</p>
         </div>
 
         {mode === 'home' && <Home onPick={setMode} />}

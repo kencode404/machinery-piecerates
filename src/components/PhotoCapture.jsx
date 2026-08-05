@@ -122,7 +122,7 @@ export default function PhotoCapture({
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
-            className="flex aspect-square w-full flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-slate-300 bg-white text-slate-400 active:bg-slate-50"
+            className="flex aspect-square w-full flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-slate-300 bg-white text-slate-500 active:bg-slate-50"
           >
             {busy ? <Spinner /> : <IconCamera width={20} height={20} />}
             {label && <span className="text-[11px] font-medium">{label}</span>}
@@ -138,7 +138,7 @@ export default function PhotoCapture({
             <button
               type="button"
               onClick={clear}
-              className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-xs leading-none text-white"
+              className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-sm leading-none text-white"
               aria-label="Remove photo"
             >
               ×
@@ -186,7 +186,7 @@ export default function PhotoCapture({
               <span className="text-[11px] text-white/80">Camera or upload from phone</span>
             </button>
           )}
-          {hint && <p className="mt-2 text-center text-xs text-slate-400">{hint}</p>}
+          {hint && <p className="mt-2 text-center text-xs text-slate-500">{hint}</p>}
         </div>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
@@ -206,7 +206,7 @@ export default function PhotoCapture({
           <div className="space-y-1 p-3 text-sm">
             {detectTime && (
               <div className="flex items-center gap-2 text-slate-600">
-                <IconClock width={15} height={15} className="text-slate-400" />
+                <IconClock width={15} height={15} className="text-slate-500" />
                 <span>{dateTimeSecondsOf(value.capturedAt)}</span>
                 {value.timeSource === GpsSource.DEVICE && (
                   <span className="text-[11px] text-amber-600">(device time)</span>
@@ -216,9 +216,9 @@ export default function PhotoCapture({
             {detectLocation && (
               <>
                 <div className="flex items-center gap-2 text-slate-600">
-                  <IconPin width={15} height={15} className={gpsOk ? 'text-slate-400' : 'text-red-400'} />
+                  <IconPin width={15} height={15} className={gpsOk ? 'text-slate-500' : 'text-red-400'} />
                   <span className={gpsOk ? '' : 'text-red-500'}>{formatGps(value.gps)}</span>
-                  {sourceLabel && <span className="text-[11px] text-slate-400">({sourceLabel})</span>}
+                  {sourceLabel && <span className="text-[11px] text-slate-500">({sourceLabel})</span>}
                 </div>
                 {!gpsOk && (
                   <p className="text-[11px] text-red-500">
@@ -228,10 +228,10 @@ export default function PhotoCapture({
               </>
             )}
             {detecting && (
-              <p className="text-[11px] text-slate-400">Reading date &amp; location…</p>
+              <p className="text-[11px] text-slate-500">Reading date &amp; location…</p>
             )}
             {value.blob?.size != null && (
-              <p className="text-[11px] text-slate-400">Upload size ≈ {formatBytes(value.blob.size)}</p>
+              <p className="text-[11px] text-slate-500">Upload size ≈ {formatBytes(value.blob.size)}</p>
             )}
           </div>
           <div className="flex border-t border-slate-100">

@@ -22,7 +22,7 @@ export default function OperatorSummary() {
   return (
     <div className="pb-4">
       <h1 className="text-lg font-bold text-slate-800">Salary claim</h1>
-      <p className="mb-3 text-xs text-slate-400">{user.operatorName}</p>
+      <p className="mb-3 text-xs text-slate-500">{user.operatorName}</p>
       <MonthSummary
         tasks={tasks || []}
         monthKey={monthKey}

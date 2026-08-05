@@ -33,7 +33,7 @@ export function PhotoThumb({ photo, className = '', onZoom }) {
   if (!photo) return null
   if (!url) {
     return (
-      <div className={`flex items-center justify-center rounded-lg bg-slate-100 text-[10px] text-slate-400 ${className}`}>
+      <div className={`flex items-center justify-center rounded-lg bg-slate-100 text-[10px] text-slate-500 ${className}`}>
         No image
       </div>
     )
