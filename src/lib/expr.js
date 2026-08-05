@@ -8,7 +8,8 @@ function tokenize(s) {
   let i = 0
   while (i < s.length) {
     const c = s[i]
-    if (c === ' ' || c === '\t') {
+    if (/\s/.test(c)) {
+      // Skip any whitespace, incl. newlines — the Quantity field is multi-line.
       i++
       continue
     }
