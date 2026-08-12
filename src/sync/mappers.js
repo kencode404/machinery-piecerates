@@ -160,7 +160,14 @@ export function fromServerTrack(r) {
 }
 
 export function toServerCompany(c) {
-  return { id: c.id, name: c.name, active: c.active, signers: c.signers ?? null, updated_at: c.updatedAt }
+  return {
+    id: c.id,
+    name: c.name,
+    active: c.active,
+    signers: c.signers ?? null,
+    boundary: c.boundary ?? null, // uploaded KML/GPX site outline
+    updated_at: c.updatedAt
+  }
 }
 export function fromServerCompany(r) {
   return {
@@ -168,6 +175,7 @@ export function fromServerCompany(r) {
     name: r.name,
     active: r.active,
     signers: r.signers ?? null,
+    boundary: r.boundary ?? null,
     updatedAt: r.updated_at,
     syncStatus: SyncStatus.SYNCED
   }

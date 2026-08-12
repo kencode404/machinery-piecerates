@@ -1,13 +1,16 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { getMonthTasks, listOperators, listCompanies, isMonthLocked } from '../../db/repo.js'
+import { getMonthTasks, listOperators, listCompanies, isMonthLocked, listTracks } from '../../db/repo.js'
 import { getMeta } from '../../db/database.js'
-import { monthKeyOf } from '../../lib/format.js'
+import { monthKeyOf, monthLabel } from '../../lib/format.js'
 import { useAuth } from '../../auth/AuthContext.jsx'
 import MonthSummary from '../../components/MonthSummary.jsx'
-import { Button, Card, Select, EmptyState } from '../../components/ui.jsx'
-import { IconPlus, IconLock, IconReport } from '../../components/icons.jsx'
+import { Button, Card, Select, EmptyState, Spinner } from '../../components/ui.jsx'
+import { IconPlus, IconLock, IconReport, IconPin } from '../../components/icons.jsx'
+
+// Read-only map of the operator's GPS paths (loads Leaflet on demand).
+const DistanceRecorder = lazy(() => import('../../components/DistanceRecorder.jsx'))
 
 // Remember the last operator tab on THIS device (per-browser, not synced), so a
 // fresh visit / reload of Records reopens the operator the admin was working on
@@ -110,6 +113,15 @@ export default function AdminRecords() {
   const locked = useLiveQuery(() => isMonthLocked(monthKey), [monthKey], false)
   const editTask = (t) => navigate(`/admin/task/${t.id}`)
 
+  // Every GPS path this operator recorded in the shown month — viewable on a
+  // read-only map (managers can inspect + export, never record).
+  const [mapOpen, setMapOpen] = useState(false)
+  const monthTracks = useLiveQuery(
+    () => (activeOpId ? listTracks({ operatorId: activeOpId, monthKey }) : Promise.resolve([])),
+    [activeOpId, monthKey],
+    []
+  )
+
   return (
     <div className="space-y-3 pb-4">
       <h1 className="text-lg font-bold text-slate-800">Records</h1>
@@ -161,6 +173,11 @@ export default function AdminRecords() {
       {activeOpId ? (
         <>
           <div className="flex items-center justify-end gap-2">
+            {(monthTracks || []).length > 0 && (
+              <Button size="sm" variant="secondary" onClick={() => setMapOpen(true)}>
+                <IconPin width={16} height={16} /> Map
+              </Button>
+            )}
             <Button size="sm" variant="secondary" onClick={() => navigate(`/admin/worklog/${activeOpId}?month=${monthKey}`)}>
               <IconReport width={16} height={16} /> Daily log
             </Button>
@@ -187,6 +204,26 @@ export default function AdminRecords() {
         </>
       ) : (
         <EmptyState title="No operator selected" subtitle="Add operators in Settings to see their records." />
+      )}
+
+      {/* Whole-month GPS paths for the selected operator — view + export only. */}
+      {mapOpen && (
+        <Suspense
+          fallback={
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 text-white">
+              <Spinner className="h-8 w-8" />
+            </div>
+          }
+        >
+          <DistanceRecorder
+            open={mapOpen}
+            readOnly
+            tracks={monthTracks || []}
+            boundary={(companies || []).find((c) => c.id === effectiveCompanyId)?.boundary || null}
+            title={`${shownOperators.find((o) => o.id === activeOpId)?.name || 'Operator'} · ${monthLabel(monthKey)}`}
+            onClose={() => setMapOpen(false)}
+          />
+        </Suspense>
       )}
     </div>
   )

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
@@ -12,8 +12,12 @@ import {
   listCompanies,
   isMonthLocked,
   kerjaJamRate,
+  listTaskTracks,
   KERJA_JAM_ID
 } from '../../db/repo.js'
+
+// Read-only map view of the operator's GPS paths (loads Leaflet on demand).
+const DistanceRecorder = lazy(() => import('../../components/DistanceRecorder.jsx'))
 import { getMeta } from '../../db/database.js'
 import { TaskStatus, GpsSource, HOURLY_RATE_NAME } from '../../db/models.js'
 import { toLocalInput, fromLocalInput, formatMoney, formatRate, dayKeyOf, monthKeyOf, formatLatLng, parseLatLng } from '../../lib/format.js'
@@ -68,6 +72,21 @@ export default function EditTask() {
 
   const [f, setF] = useState(null)
   const [zoom, setZoom] = useState(null)
+  const [mapOpen, setMapOpen] = useState(false)
+  // GPS paths recorded by the operator for this task. When any exist the
+  // quantity is the measured total and must stay read-only here — editing it
+  // would break the audit trail back to the recorded paths.
+  const taskTracks = useLiveQuery(() => listTaskTracks(id), [id], [])
+  const trackTotal = useMemo(
+    () => Math.round((taskTracks || []).reduce((s, t) => s + (Number(t.distanceMeters) || 0), 0) * 10) / 10,
+    [taskTracks]
+  )
+  const qtyLocked = (taskTracks || []).length > 0
+  const [showQtyFormula, setShowQtyFormula] = useState(false)
+  const trackExpr = useMemo(
+    () => (taskTracks || []).map((t) => Math.round((Number(t.distanceMeters) || 0) * 10) / 10).join('+'),
+    [taskTracks]
+  )
   const [startPhoto, setStartPhoto] = useState(null)
   const [workPhoto, setWorkPhoto] = useState(null)
   const [endWorkPhoto, setEndWorkPhoto] = useState(null)
@@ -267,8 +286,16 @@ export default function EditTask() {
       pieceRateName: rate?.name ?? null,
       unit: rate?.unit ?? null,
       unitPrice: rate ? Number(rate.price) : null,
-      quantity: evalExpr(f.quantity),
-      quantityExpr: isExpression(f.quantity) ? f.quantity.trim() : null,
+      // GPS-measured quantities always come from the recordings themselves, not
+      // the (possibly stale) form snapshot.
+      quantity: qtyLocked ? trackTotal : evalExpr(f.quantity),
+      quantityExpr: qtyLocked
+        ? (taskTracks || []).length > 1
+          ? trackExpr
+          : null
+        : isExpression(f.quantity)
+          ? f.quantity.trim()
+          : null,
       areaId: area?.id ?? null,
       areaName: area?.name ?? null,
       notes: f.notes
@@ -462,8 +489,41 @@ export default function EditTask() {
             ))}
           </Select>
         </Field>
-        <Field label={`Quantity${rate ? ` (${rate.unit})` : ''}`} hint="A number or a sum like 5+5+10-6">
-          <QuantityInput value={f.quantity} onChange={(v) => setF((p) => ({ ...p, quantity: v }))} />
+        {/* GPS paths the operator recorded for this task — view only. */}
+        {(taskTracks || []).length > 0 && (
+          <button
+            type="button"
+            onClick={() => setMapOpen(true)}
+            className="flex w-full items-center justify-between rounded-xl border border-brand/40 bg-brand-light/50 px-3 py-3 text-left active:bg-brand-light"
+          >
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-brand-dark">GPS distance recording</p>
+              <p className="text-xs text-slate-600">
+                {taskTracks.length} recording{taskTracks.length === 1 ? '' : 's'} ·{' '}
+                {trackTotal.toLocaleString()} m measured
+              </p>
+            </div>
+            <span className="shrink-0 rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white">View map</span>
+          </button>
+        )}
+
+        <Field
+          label={`Quantity${rate ? ` (${rate.unit})` : ''}`}
+          hint={qtyLocked ? 'Measured by GPS — tap to see the sum' : 'A number or a sum like 5+5+10-6'}
+        >
+          {qtyLocked ? (
+            // Excel-cell style: total, tap to reveal the recordings' sum. Not
+            // editable — the value belongs to the GPS recordings.
+            <button
+              type="button"
+              onClick={() => setShowQtyFormula((v) => !v)}
+              className="flex h-12 w-full items-center rounded-xl border border-slate-300 bg-slate-100 px-3.5 text-left font-semibold text-slate-800"
+            >
+              {showQtyFormula ? trackExpr : `${trackTotal.toLocaleString()} m`}
+            </button>
+          ) : (
+            <QuantityInput value={f.quantity} onChange={(v) => setF((p) => ({ ...p, quantity: v }))} />
+          )}
         </Field>
         <Field label="Area">
           <Select value={f.areaId} onChange={set('areaId')}>
@@ -526,6 +586,26 @@ export default function EditTask() {
       </div>
 
       <Lightbox url={zoom} onClose={() => setZoom(null)} />
+
+      {/* Operator's recorded GPS paths — view + export only, no recording. */}
+      {mapOpen && (
+        <Suspense
+          fallback={
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 text-white">
+              <Spinner className="h-8 w-8" />
+            </div>
+          }
+        >
+          <DistanceRecorder
+            open={mapOpen}
+            readOnly
+            tracks={taskTracks || []}
+            boundary={(companies || []).find((c) => c.id === task.companyId)?.boundary || null}
+            title={`${task.operatorName || 'Operator'} · ${task.pieceRateName || 'Work'}`}
+            onClose={() => setMapOpen(false)}
+          />
+        </Suspense>
+      )}
     </form>
   )
 }

@@ -569,6 +569,7 @@ export default function CompleteTask() {
             session={user}
             taskId={id}
             pieceRate={rate}
+            boundary={company?.boundary || null}
             onSaved={() => {}}
           />
         </Suspense>

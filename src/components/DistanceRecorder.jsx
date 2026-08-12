@@ -28,13 +28,28 @@ const timeOnly = (iso) =>
  *
  * Recording works offline (GPS needs no network) — only the imagery tiles do.
  */
-export default function DistanceRecorder({ open, onClose, session, taskId, pieceRate, onSaved }) {
+export default function DistanceRecorder({
+  open,
+  onClose,
+  session,
+  taskId,
+  pieceRate,
+  onSaved,
+  // Admin view: show given tracks on the map, inspect + export them, but no
+  // recording controls and no GPS/wake-lock/notification usage at all.
+  readOnly = false,
+  tracks: tracksProp = null,
+  title = null,
+  // Company site outline (parsed KML/GPX), drawn under everything else.
+  boundary = null
+}) {
   const mapDiv = useRef(null)
   const mapRef = useRef(null)
   const liveLine = useRef(null) // polyline of the in-progress recording
   const liveCasing = useRef(null) // white outline under it
   const hereDot = useRef(null) // current-location marker
   const monthLayer = useRef(null) // this month's saved tracks
+  const boundaryLayer = useRef(null) // company site outline
   const recorder = useRef(null)
 
   const [rec, setRec] = useState({ running: false, paused: false, distance: 0, points: [], lastFix: null })
@@ -76,11 +91,12 @@ export default function DistanceRecorder({ open, onClose, session, taskId, piece
   }, [followMode])
 
   const monthKey = monthKeyOf(new Date())
-  const monthTracks = useLiveQuery(
-    () => (open && session?.operatorId ? listTracks({ operatorId: session.operatorId, monthKey }) : []),
-    [open, session?.operatorId, monthKey],
+  const queriedTracks = useLiveQuery(
+    () => (open && !tracksProp && session?.operatorId ? listTracks({ operatorId: session.operatorId, monthKey }) : []),
+    [open, tracksProp, session?.operatorId, monthKey],
     []
   )
+  const monthTracks = tracksProp ?? queriedTracks
   const monthTotal = useMemo(
     () => (monthTracks || []).reduce((s, t) => s + (Number(t.distanceMeters) || 0), 0),
     [monthTracks]
@@ -95,7 +111,11 @@ export default function DistanceRecorder({ open, onClose, session, taskId, piece
     L.tileLayer(SAT_TILES, { maxZoom: 19 }).addTo(map)
     map.setView(FALLBACK_CENTER, 6)
     mapRef.current = map
-    monthLayer.current = L.layerGroup().addTo(map)
+    // Company boundary sits under the tracks (added first).
+    boundaryLayer.current = L.featureGroup().addTo(map)
+    // featureGroup (not layerGroup) — it's the one that exposes getBounds(),
+    // which the read-only view uses to frame the recorded paths.
+    monthLayer.current = L.featureGroup().addTo(map)
     // Live recording line, white-cased for the same reason as the saved tracks.
     liveCasing.current = L.polyline([], { color: '#ffffff', weight: 7, opacity: 0.85 }).addTo(map)
     liveLine.current = L.polyline([], { color: '#ef4444', weight: 4 }).addTo(map)
@@ -117,6 +137,7 @@ export default function DistanceRecorder({ open, onClose, session, taskId, piece
       })
     }).addTo(map)
     dotInner.current = hereDot.current.getElement()?.firstElementChild || null
+    if (readOnly) hereDot.current.remove() // no live position in the admin view
     // Pause follow-centering while the operator pinches/zooms.
     map.on('zoomstart', () => (zooming.current = true))
     map.on('zoomend', () => (zooming.current = false))
@@ -230,7 +251,7 @@ export default function DistanceRecorder({ open, onClose, session, taskId, piece
   // moment the map opens — a denied state can never re-prompt, so waiting on
   // GPS would just look broken.
   useEffect(() => {
-    if (!open || !navigator.permissions?.query) return
+    if (!open || readOnly || !navigator.permissions?.query) return
     navigator.permissions
       .query({ name: 'geolocation' })
       .then((st) => {
@@ -245,7 +266,7 @@ export default function DistanceRecorder({ open, onClose, session, taskId, piece
   // stays disabled until the fix is tight enough to measure with. (While
   // recording, the recorder's own watch takes over feeding the dot.)
   useEffect(() => {
-    if (!open || rec.running || !navigator.geolocation) return
+    if (!open || readOnly || rec.running || !navigator.geolocation) return
     const wid = navigator.geolocation.watchPosition(
       (pos) => {
         const f = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy ?? null }
@@ -265,6 +286,23 @@ export default function DistanceRecorder({ open, onClose, session, taskId, piece
     )
     return () => navigator.geolocation.clearWatch(wid)
   }, [open, rec.running])
+
+  // Draw the company boundary: a background reference layer, non-interactive so
+  // it never steals taps from the tracks.
+  useEffect(() => {
+    const layer = boundaryLayer.current
+    if (!open || !layer) return
+    layer.clearLayers()
+    for (const f of boundary?.features || []) {
+      if (!f?.coords?.length) continue
+      const opts = { color: '#fbbf24', weight: 2, opacity: 0.95, interactive: false, dashArray: '6 4' }
+      if (f.type === 'polygon') {
+        L.polygon(f.coords, { ...opts, fillColor: '#fbbf24', fillOpacity: 0.08 }).addTo(layer)
+      } else {
+        L.polyline(f.coords, opts).addTo(layer)
+      }
+    }
+  }, [open, boundary])
 
   // Draw this month's saved tracks (blue, under the live red line). Each one is
   // tappable to show its job / finish time / distance.
@@ -306,7 +344,24 @@ export default function DistanceRecorder({ open, onClose, session, taskId, piece
         .addTo(layer)
         .on('click', show)
     }
-  }, [open, monthTracks, selected])
+    // Admin view has no live position to centre on — frame the tracks instead.
+    // Deferred so the (oversized, rotating) container has its real size first;
+    // fitting against a stale size picks a far-too-wide zoom.
+    if (readOnly && !centered.current) {
+      // Prefer the tracks; fall back to the boundary when there are none (so the
+      // map still opens somewhere meaningful rather than the world view).
+      let b = layer.getBounds?.()
+      if (!b?.isValid()) b = boundaryLayer.current?.getBounds?.()
+      if (b?.isValid()) {
+        centered.current = true
+        const m = mapRef.current
+        setTimeout(() => {
+          m?.invalidateSize()
+          m?.fitBounds(b, { padding: [40, 40], maxZoom: 18 })
+        }, 90)
+      }
+    }
+  }, [open, monthTracks, selected, readOnly])
 
   function onUpdate({ points, distance, lastFix, paused }) {
     setRec({ running: !!recorder.current?.running, paused, distance, points, lastFix })
@@ -495,7 +550,11 @@ export default function DistanceRecorder({ open, onClose, session, taskId, piece
             onClick={(e) => e.stopPropagation()}
           >
             <p className="text-base font-bold text-slate-800">
-              {exportTarget === 'month' ? `Export ${monthLabel(monthKey)}` : 'Export this track'}
+              {exportTarget !== 'month'
+                ? 'Export this track'
+                : readOnly
+                  ? title || 'Export paths'
+                  : `Export ${monthLabel(monthKey)}`}
             </p>
             <p className="mt-1 text-sm text-slate-600">
               {exportList.length} track{exportList.length === 1 ? '' : 's'} · {fmtM(exportMeters)}
@@ -561,18 +620,27 @@ export default function DistanceRecorder({ open, onClose, session, taskId, piece
       {/* Top bar: distance + close */}
       <div className="pt-safe absolute inset-x-0 top-0 z-[1000] flex items-start justify-between p-3">
         <div className="rounded-xl bg-black/70 px-4 py-2 text-white shadow">
-          {/* Updated at 60fps by the glide loop (imperative — avoids re-rendering per frame) */}
-          <p ref={distEl} className="text-2xl font-bold leading-tight">0 m</p>
-          <p className="text-[11px] text-white/70">
-            {rec.running ? (rec.paused ? 'Paused' : 'Recording…') : 'This recording'}
-            {' · '}this month {fmtM(monthTotal)}
-          </p>
-          <p className={`text-[11px] font-medium ${accColor}`}>
-            {accNow != null ? `GPS ±${Math.round(accNow)} m` : 'Getting GPS…'}
-            {rec.running && accNow != null && accNow > MAX_ACCURACY_M
-              ? ' — weak signal, count on hold'
-              : ''}
-          </p>
+          {readOnly ? (
+            <>
+              <p className="text-2xl font-bold leading-tight">{fmtM(monthTotal)}</p>
+              <p className="text-[11px] text-white/70">
+                {title || `${(monthTracks || []).length} recording${(monthTracks || []).length === 1 ? '' : 's'}`}
+              </p>
+            </>
+          ) : (
+            <>
+              {/* Updated at 60fps by the glide loop (imperative — avoids re-rendering per frame) */}
+              <p ref={distEl} className="text-2xl font-bold leading-tight">0 m</p>
+              <p className="text-[11px] text-white/70">
+                {rec.running ? (rec.paused ? 'Paused' : 'Recording…') : 'This recording'}
+                {' · '}this month {fmtM(monthTotal)}
+              </p>
+              <p className={`text-[11px] font-medium ${accColor}`}>
+                {accNow != null ? `GPS ±${Math.round(accNow)} m` : 'Getting GPS…'}
+                {rec.running && accNow != null && accNow > MAX_ACCURACY_M ? ' — weak signal, count on hold' : ''}
+              </p>
+            </>
+          )}
         </div>
         <button
           type="button"
@@ -626,7 +694,7 @@ export default function DistanceRecorder({ open, onClose, session, taskId, piece
                 </button>
               </div>
             </div>
-            {hasExport && (
+            {hasExport && !readOnly && (
               // Must mirror the real button's label AND classes, or the panel
               // won't line up with the Start-recording button.
               <Button
@@ -646,7 +714,14 @@ export default function DistanceRecorder({ open, onClose, session, taskId, piece
         {error && (
           <p className="w-fit max-w-[72%] rounded-lg bg-black/75 px-3 py-2 text-sm text-red-300">{error}</p>
         )}
-        {idle ? (
+        {readOnly ? (
+          // Admin: inspect + export only, no recording controls.
+          hasExport && (
+            <Button type="button" full variant="secondary" onClick={() => setExportTarget('month')}>
+              Export
+            </Button>
+          )
+        ) : idle ? (
           <div className="flex gap-2">
             <Button type="button" full onClick={start} disabled={saving || !gpsReady}>
               {saving

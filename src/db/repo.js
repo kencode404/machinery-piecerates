@@ -617,6 +617,9 @@ export async function upsertCompany(input) {
     active: input.active !== false,
     // Default signers for the claim form (kept across edits).
     signers: input.signers ?? existing?.signers ?? null,
+    // Uploaded KML/GPX site outline. Only replaced when explicitly passed, so
+    // editing the company name elsewhere can't wipe it (`null` clears it).
+    boundary: input.boundary !== undefined ? input.boundary : (existing?.boundary ?? null),
     updatedAt: now,
     syncStatus: SyncStatus.PENDING
   }

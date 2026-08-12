@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useAuth } from '../../auth/AuthContext.jsx'
 import { getMeta } from '../../db/database.js'
 import { formatMoney, formatRate } from '../../lib/format.js'
+import { parseGeoFile, countPoints } from '../../lib/geofile.js'
 import { isDistanceUnit } from '../../lib/dashboard.js'
 import {
   listPieceRates,
@@ -229,6 +230,8 @@ function CompanyDetail({ companyId, onBack, onOpenMachine }) {
         {areas && areas.length === 0 && <p className="text-sm text-slate-500">No areas in this company.</p>}
       </SectionCard>
 
+      <BoundarySection company={company} />
+
       <CompanyEditor
         key={editCompany ? 'edit' : 'closed'}
         editing={editCompany ? company : null}
@@ -255,6 +258,84 @@ function CompanyDetail({ companyId, onBack, onOpenMachine }) {
         onClose={() => setAreaEditing(null)}
       />
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Company boundary — a KML/GPX site outline shown on every map for the company
+// ---------------------------------------------------------------------------
+
+function BoundarySection({ company }) {
+  const fileRef = useRef(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [msg, setMsg] = useState('')
+  const boundary = company?.boundary || null
+  const shapes = boundary?.features?.length || 0
+
+  async function onFile(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setErr('')
+    setMsg('')
+    setBusy(true)
+    try {
+      const parsed = parseGeoFile(await file.text(), file.name)
+      await upsertCompany({ ...company, boundary: { ...parsed, fileName: file.name } })
+      setMsg(
+        `Loaded ${parsed.features.length} shape${parsed.features.length === 1 ? '' : 's'}` +
+          (parsed.truncated ? ' (file was very large — trimmed)' : '')
+      )
+    } catch (e2) {
+      setErr(e2.message || 'Could not read that file.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function clear() {
+    if (!window.confirm('Remove this boundary from all maps for this company?')) return
+    setErr('')
+    setMsg('')
+    await upsertCompany({ ...company, boundary: null })
+  }
+
+  return (
+    <Card className="p-4">
+      <h2 className="font-semibold text-slate-800">Boundary</h2>
+      <p className="mb-2 mt-0.5 text-xs text-slate-500">
+        Upload a KML or GPX outline of this company’s site. It shows on every map — for operators and
+        admins — behind the recorded paths.
+      </p>
+
+      <input ref={fileRef} type="file" accept=".kml,.gpx,application/vnd.google-earth.kml+xml,application/gpx+xml,text/xml" hidden onChange={onFile} />
+
+      {boundary ? (
+        <div className="rounded-lg border border-slate-200 px-3 py-2">
+          <p className="truncate text-sm font-medium text-slate-800">{boundary.fileName || boundary.name || 'Boundary'}</p>
+          <p className="text-xs text-slate-500">
+            {shapes} shape{shapes === 1 ? '' : 's'} · {countPoints(boundary).toLocaleString()} points
+          </p>
+        </div>
+      ) : (
+        <p className="text-sm text-slate-500">No boundary uploaded.</p>
+      )}
+
+      {err && <p className="mt-2 text-xs text-red-500">{err}</p>}
+      {msg && <p className="mt-2 text-xs text-green-600">{msg}</p>}
+
+      <div className="mt-3 flex gap-2">
+        <Button variant="secondary" full onClick={() => fileRef.current?.click()} disabled={busy}>
+          {busy ? 'Reading…' : boundary ? 'Replace file' : 'Upload KML / GPX'}
+        </Button>
+        {boundary && (
+          <Button variant="danger" onClick={clear} disabled={busy}>
+            <IconTrash width={16} height={16} />
+          </Button>
+        )}
+      </div>
+    </Card>
   )
 }
 
