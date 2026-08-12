@@ -120,7 +120,9 @@ export class TrackRecorder {
     const { latitude: lat, longitude: lng, accuracy } = pos.coords
     const speed = pos.coords.speed // m/s from GPS Doppler; null when unsupported
     const t = pos.timestamp || Date.now()
-    this.lastFix = { lat, lng, accuracy, t }
+    // heading = course over ground in degrees from north (null when stationary);
+    // the map uses it for the direction triangle when the compass is silent.
+    this.lastFix = { lat, lng, accuracy, t, heading: pos.coords.heading ?? null, speed: speed ?? null }
     if (this.paused) return this._emit()
     if (accuracy != null && accuracy > MAX_ACCURACY_M) return this._emit()
 
@@ -220,23 +222,29 @@ export class TrackRecorder {
 const esc = (s) =>
   String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
-/** tracks: [{name, points:[{lat,lng,t}], distanceMeters, startedAt}] */
+// Exports carry the PATH GEOMETRY ONLY — no per-point timestamps, no job /
+// piece-rate names, no dates or distances. Just the lines, so the file can be
+// dropped into Google Earth / QGIS without leaking record details.
+
+/** tracks: [{points:[{lat,lng}], ...}] — everything but the geometry is ignored. */
 export function tracksToKML(tracks, docName = 'Tracks') {
   const placemarks = tracks
-    .map((tr) => {
+    .map((tr, i) => {
       const coords = tr.points.map((p) => `${p.lng},${p.lat},0`).join(' ')
       return `    <Placemark>
-      <name>${esc(tr.name)}</name>
-      <description>${esc(`${Math.round(tr.distanceMeters)} m`)}</description>
+      <name>Path ${i + 1}</name>
+      <styleUrl>#track</styleUrl>
       <LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString>
     </Placemark>`
     })
     .join('\n')
+  // Same blue the app draws tracks in (#3b82f6). KML colours are aabbggrr, so
+  // that's fff6823b. GPX has no styling at all, so this makes both look alike.
   return `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
   <Document>
     <name>${esc(docName)}</name>
-    <Style id="track"><LineStyle><color>ff0078ff</color><width>4</width></LineStyle></Style>
+    <Style id="track"><LineStyle><color>fff6823b</color><width>4</width></LineStyle></Style>
 ${placemarks}
   </Document>
 </kml>`
@@ -244,12 +252,10 @@ ${placemarks}
 
 export function tracksToGPX(tracks, docName = 'Tracks') {
   const trks = tracks
-    .map((tr) => {
-      const pts = tr.points
-        .map((p) => `      <trkpt lat="${p.lat}" lon="${p.lng}"><time>${new Date(p.t).toISOString()}</time></trkpt>`)
-        .join('\n')
+    .map((tr, i) => {
+      const pts = tr.points.map((p) => `      <trkpt lat="${p.lat}" lon="${p.lng}" />`).join('\n')
       return `  <trk>
-    <name>${esc(tr.name)}</name>
+    <name>Path ${i + 1}</name>
     <trkseg>
 ${pts}
     </trkseg>

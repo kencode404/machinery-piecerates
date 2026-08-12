@@ -14,6 +14,7 @@ const geoFor = (loc, fallback) => {
 import PhotoCapture from '../../components/PhotoCapture.jsx'
 import PageHeader from '../../components/PageHeader.jsx'
 import { Button, Card, Field, TextInput, TextArea } from '../../components/ui.jsx'
+import { IconPlus } from '../../components/icons.jsx'
 
 export default function NewTask() {
   const { user } = useAuth()
@@ -21,6 +22,9 @@ export default function NewTask() {
 
   const [photo1, setPhoto1] = useState(null)
   const [photo2, setPhoto2] = useState(null)
+  // Photo 2 is optional and rarely used — keep the form short by hiding it
+  // behind a thin button until the operator asks for it.
+  const [showPhoto2, setShowPhoto2] = useState(false)
   const [startTime, setStartTime] = useState('')
   const [timeTouched, setTimeTouched] = useState(false)
   const [startLoc, setStartLoc] = useState('')
@@ -81,14 +85,27 @@ export default function NewTask() {
 
       <div className="space-y-4">
         <PhotoCapture label="Meter photo" required hint="Photo of the hour-meter / mileage" value={photo1} onChange={setPhoto1} />
-        <PhotoCapture
-          label="Photo 2 (optional)"
-          hint="e.g. the machine / site"
-          value={photo2}
-          onChange={setPhoto2}
-          detectTime={false}
-          detectLocation={false}
-        />
+        {showPhoto2 || photo2 ? (
+          <PhotoCapture
+            label="Extra photo (optional)"
+            hint="e.g. the machine / site"
+            value={photo2}
+            onChange={(p) => {
+              setPhoto2(p)
+              if (!p) setShowPhoto2(false) // removed → collapse back to the button
+            }}
+            detectTime={false}
+            detectLocation={false}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowPhoto2(true)}
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-slate-300 bg-white py-2.5 text-sm font-medium text-slate-600 active:bg-slate-50"
+          >
+            <IconPlus width={16} height={16} /> Add extra photo
+          </button>
+        )}
 
         <Card className="space-y-3 p-4">
           <Field label="Start time" required hint="Taken from the photo — edit if needed">

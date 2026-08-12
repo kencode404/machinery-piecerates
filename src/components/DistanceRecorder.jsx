@@ -14,6 +14,11 @@ const SAT_ATTRIB = 'Imagery © Esri'
 const FALLBACK_CENTER = [4.2105, 108.9758] // Malaysia-ish, used only before the first GPS fix
 
 const fmtM = (m) => `${(Math.round(m * 10) / 10).toLocaleString()} m`
+const dateOnly = (iso) =>
+  iso ? new Date(iso).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
+// Always 24-hour (e.g. 14:30) regardless of the phone's own time setting.
+const timeOnly = (iso) =>
+  iso ? new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false }) : '—'
 
 /**
  * Full-screen satellite-map overlay where an operator records the distance
@@ -27,6 +32,7 @@ export default function DistanceRecorder({ open, onClose, session, taskId, piece
   const mapDiv = useRef(null)
   const mapRef = useRef(null)
   const liveLine = useRef(null) // polyline of the in-progress recording
+  const liveCasing = useRef(null) // white outline under it
   const hereDot = useRef(null) // current-location marker
   const monthLayer = useRef(null) // this month's saved tracks
   const recorder = useRef(null)
@@ -36,13 +42,38 @@ export default function DistanceRecorder({ open, onClose, session, taskId, piece
   const centered = useRef(false)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  // Format chooser target: null = closed, 'month' = all of this month's tracks,
+  // or a single track object (exported from its detail panel).
+  const [exportTarget, setExportTarget] = useState(null)
+  const [selected, setSelected] = useState(null) // past track tapped on the map
 
   // Visual smoothing: GPS fixes land ~once a second, which looks choppy if the
   // dot/line/counter jump to each fix. A 60fps loop glides the shown position
   // and meter count toward the latest real values instead. Display only — the
   // measured distance itself is untouched.
   const distEl = useRef(null) // big meter readout, updated imperatively
-  const smooth = useRef({ pos: null, target: null, linePts: [], extendLine: false, dist: 0, distTarget: 0 })
+  const smooth = useRef({
+    pos: null,
+    target: null,
+    linePts: [],
+    extendLine: false,
+    dist: 0,
+    distTarget: 0,
+    headShown: 0, // displayed heading (deg), eased toward headTarget
+    headTarget: null,
+    headAt: 0, // when the compass last spoke (GPS course fills long silences)
+    wrapShown: 0 // current map rotation (heading-up mode)
+  })
+  const rotWrap = useRef(null) // rotating wrapper around the map (heading-up mode)
+  const dotInner = useRef(null) // the dot/triangle element, rotated to the heading
+  const zooming = useRef(false) // pause follow-centering during a pinch/zoom
+  // Follow mode, cycled by the compass button: 0 = free, 1 = follow (north-up),
+  // 2 = follow + rotate with facing direction. Recording forces mode 1 on start.
+  const [followMode, setFollowMode] = useState(1)
+  const modeRef = useRef(1)
+  useEffect(() => {
+    modeRef.current = followMode
+  }, [followMode])
 
   const monthKey = monthKeyOf(new Date())
   const monthTracks = useLiveQuery(
@@ -58,20 +89,39 @@ export default function DistanceRecorder({ open, onClose, session, taskId, piece
   // Create the map when the overlay opens, destroy it when it closes.
   useEffect(() => {
     if (!open || !mapDiv.current) return
-    const map = L.map(mapDiv.current, { zoomControl: false, attributionControl: true })
-    L.control.zoom({ position: 'bottomright' }).addTo(map)
-    L.tileLayer(SAT_TILES, { maxZoom: 19, attribution: SAT_ATTRIB }).addTo(map)
+    // No Leaflet corner controls: the map div is oversized for rotation, so its
+    // corners sit off-screen — zoom is pinch/scroll, credit is our own overlay.
+    const map = L.map(mapDiv.current, { zoomControl: false, attributionControl: false })
+    L.tileLayer(SAT_TILES, { maxZoom: 19 }).addTo(map)
     map.setView(FALLBACK_CENTER, 6)
     mapRef.current = map
     monthLayer.current = L.layerGroup().addTo(map)
+    // Live recording line, white-cased for the same reason as the saved tracks.
+    liveCasing.current = L.polyline([], { color: '#ffffff', weight: 7, opacity: 0.85 }).addTo(map)
     liveLine.current = L.polyline([], { color: '#ef4444', weight: 4 }).addTo(map)
-    hereDot.current = L.circleMarker(FALLBACK_CENTER, {
-      radius: 7,
-      color: '#ffffff',
-      weight: 2,
-      fillColor: '#2563eb',
-      fillOpacity: 1
+    // Current-position marker: blue dot with a triangle "beak" showing the
+    // facing/travel direction (rotated each frame by the glide loop).
+    hereDot.current = L.marker(FALLBACK_CENTER, {
+      interactive: false,
+      zIndexOffset: 1000,
+      icon: L.divIcon({
+        className: '',
+        iconSize: [40, 40],
+        iconAnchor: [20, 20],
+        html:
+          '<div style="width:40px;height:40px;will-change:transform">' +
+          '<svg viewBox="0 0 40 40" width="40" height="40" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))">' +
+          '<polygon points="20,2 27,13 13,13" fill="#2563eb" stroke="#ffffff" stroke-width="1.5"/>' +
+          '<circle cx="20" cy="22" r="9" fill="#2563eb" stroke="#ffffff" stroke-width="2.5"/>' +
+          '</svg></div>'
+      })
     }).addTo(map)
+    dotInner.current = hereDot.current.getElement()?.firstElementChild || null
+    // Pause follow-centering while the operator pinches/zooms.
+    map.on('zoomstart', () => (zooming.current = true))
+    map.on('zoomend', () => (zooming.current = false))
+    // Tapping empty map clears the inspected track (track taps don't bubble).
+    map.on('click', () => setSelected(null))
 
     // The overlay animates in — Leaflet needs a size poke once it's visible.
     setTimeout(() => mapRef.current?.invalidateSize(), 60)
@@ -88,9 +138,21 @@ export default function DistanceRecorder({ open, onClose, session, taskId, piece
       smooth.current.target = null
       setRec({ running: false, paused: false, distance: 0, points: [], lastFix: null })
       setFix(null)
+      setSelected(null)
+      setExportTarget(null)
       setError('')
     }
   }, [open])
+
+  // Shortest-way easing between two angles (handles the 359°→1° wrap).
+  const easeAngle = (cur, target, k) => cur + ((((target - cur + 540) % 360) - 180) * k)
+
+  // Errors are transient notices — clear them so they don't sit over the map.
+  useEffect(() => {
+    if (!error) return
+    const id = setTimeout(() => setError(''), 6000)
+    return () => clearTimeout(id)
+  }, [error])
 
   // The 60fps glide loop (exponential approach: each frame closes ~12-15% of
   // the remaining gap, so motion is fluid and settles fast without overshoot).
@@ -104,8 +166,26 @@ export default function DistanceRecorder({ open, onClose, session, taskId, piece
           ? [s.pos[0] + (s.target[0] - s.pos[0]) * 0.12, s.pos[1] + (s.target[1] - s.pos[1]) * 0.12]
           : s.target
         hereDot.current?.setLatLng(s.pos)
-        // The live red line grows continuously to the gliding dot.
-        if (liveLine.current) liveLine.current.setLatLngs(s.extendLine ? [...s.linePts, s.pos] : s.linePts)
+        // The live red line (and its casing) grows continuously to the dot.
+        const live = s.extendLine ? [...s.linePts, s.pos] : s.linePts
+        liveCasing.current?.setLatLngs(live)
+        liveLine.current?.setLatLngs(live)
+        // Follow modes keep the machine centered (skipped mid-pinch so zoom
+        // gestures aren't cancelled). Free mode leaves the map alone.
+        if (modeRef.current >= 1 && !zooming.current && mapRef.current) {
+          mapRef.current.panTo(s.pos, { animate: false })
+        }
+      }
+      // Heading: rotate the dot's triangle; in heading-up mode counter-rotate
+      // the whole map so "forward" is up (the triangle then points up too).
+      if (s.headTarget != null) {
+        s.headShown = easeAngle(s.headShown, s.headTarget, 0.15)
+        if (dotInner.current) dotInner.current.style.transform = `rotate(${s.headShown}deg)`
+      }
+      const wrapTarget = modeRef.current === 2 && s.headTarget != null ? -s.headShown : 0
+      s.wrapShown = easeAngle(s.wrapShown, wrapTarget, 0.15)
+      if (rotWrap.current) {
+        rotWrap.current.style.transform = `translate(-50%, -50%) rotate(${s.wrapShown}deg)`
       }
       s.dist += (s.distTarget - s.dist) * 0.15
       if (Math.abs(s.distTarget - s.dist) < 0.05) s.dist = s.distTarget
@@ -115,6 +195,36 @@ export default function DistanceRecorder({ open, onClose, session, taskId, piece
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
   }, [open])
+
+  // Facing direction from the device compass; GPS course-over-ground fills in
+  // while the compass is silent and the machine is moving.
+  useEffect(() => {
+    if (!open) return
+    const onOrient = (e) => {
+      let h = null
+      if (e.webkitCompassHeading != null) h = e.webkitCompassHeading // iOS
+      else if (e.alpha != null && (e.absolute || e.type === 'deviceorientationabsolute')) h = (360 - e.alpha) % 360
+      if (h != null && Number.isFinite(h)) {
+        smooth.current.headTarget = h
+        smooth.current.headAt = Date.now()
+      }
+    }
+    window.addEventListener('deviceorientationabsolute', onOrient)
+    window.addEventListener('deviceorientation', onOrient)
+    return () => {
+      window.removeEventListener('deviceorientationabsolute', onOrient)
+      window.removeEventListener('deviceorientation', onOrient)
+    }
+  }, [open])
+
+  // GPS course fallback for the triangle (only when the compass hasn't spoken
+  // recently and we're actually moving — course is meaningless when parked).
+  function gpsHeadingFallback(heading, speed) {
+    if (heading == null || !Number.isFinite(heading)) return
+    if ((speed ?? 0) < 0.5) return
+    if (Date.now() - smooth.current.headAt < 3000) return
+    smooth.current.headTarget = heading
+  }
 
   // If location is hard-blocked for this site, say so (with the fix) the
   // moment the map opens — a denied state can never re-prompt, so waiting on
@@ -141,6 +251,7 @@ export default function DistanceRecorder({ open, onClose, session, taskId, piece
         const f = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy ?? null }
         setFix(f)
         smooth.current.target = [f.lat, f.lng] // dot glides there via the rAF loop
+        gpsHeadingFallback(pos.coords.heading, pos.coords.speed)
         if (!centered.current && mapRef.current) {
           centered.current = true
           mapRef.current.setView([f.lat, f.lng], 18)
@@ -155,36 +266,60 @@ export default function DistanceRecorder({ open, onClose, session, taskId, piece
     return () => navigator.geolocation.clearWatch(wid)
   }, [open, rec.running])
 
-  // Draw this month's saved tracks (blue, under the live red line).
+  // Draw this month's saved tracks (blue, under the live red line). Each one is
+  // tappable to show its job / finish time / distance.
   useEffect(() => {
     const layer = monthLayer.current
     if (!open || !layer) return
     layer.clearLayers()
     for (const t of monthTracks || []) {
       if (!t.points?.length) continue
-      L.polyline(
-        t.points.map((p) => [p.lat, p.lng]),
-        { color: '#3b82f6', weight: 3, opacity: 0.6 }
-      ).addTo(layer)
+      const latlngs = t.points.map((p) => [p.lat, p.lng])
+      // Tap a track → highlight it and open a small popup pinned to the tap
+      // point, showing the job, finish time and distance.
+      // Tap a track → highlight it; details render in the fixed right-hand
+      // panel (never over the map lines).
+      const show = () => setSelected(t)
+      const isSel = selected?.id === t.id
+      // Casing under every track so it reads against dark/bright satellite
+      // imagery: white for normal tracks, near-black under the selected one
+      // (which is amber, so a dark casing gives the strongest contrast).
+      L.polyline(latlngs, {
+        color: isSel ? '#111827' : '#ffffff',
+        weight: isSel ? 9 : 6,
+        opacity: isSel ? 0.9 : 0.85,
+        bubblingMouseEvents: false
+      })
+        .addTo(layer)
+        .on('click', show)
+      L.polyline(latlngs, {
+        color: isSel ? '#facc15' : '#3b82f6',
+        weight: isSel ? 5 : 3,
+        opacity: 1,
+        bubblingMouseEvents: false
+      })
+        .addTo(layer)
+        .on('click', show)
+      // Invisible fat line on top — a 3px line is nearly impossible to tap
+      // with a finger, so this widens the hit area without changing the look.
+      L.polyline(latlngs, { color: '#000', weight: 22, opacity: 0, bubblingMouseEvents: false })
+        .addTo(layer)
+        .on('click', show)
     }
-  }, [open, monthTracks])
+  }, [open, monthTracks, selected])
 
   function onUpdate({ points, distance, lastFix, paused }) {
     setRec({ running: !!recorder.current?.running, paused, distance, points, lastFix })
-    // Feed the glide loop — it moves the dot, grows the line, counts the meter.
+    // Feed the glide loop — it moves the dot, grows the line, counts the meter,
+    // and (in follow modes) keeps the machine centered.
     const s = smooth.current
-    if (lastFix) s.target = [lastFix.lat, lastFix.lng]
+    if (lastFix) {
+      s.target = [lastFix.lat, lastFix.lng]
+      gpsHeadingFallback(lastFix.heading, lastFix.speed)
+    }
     s.linePts = points.map((p) => [p.lat, p.lng])
     s.extendLine = !!recorder.current?.running && !paused
     s.distTarget = distance
-    // Follow the machine WITHOUT fighting the operator's own pan/pinch: only
-    // re-center when the dot nears the edge of the view. An unconditional
-    // panTo on every fix cancels in-progress gestures and makes the map feel
-    // like it zooms/jumps on its own.
-    if (lastFix && mapRef.current && !paused) {
-      const ll = [lastFix.lat, lastFix.lng]
-      if (!mapRef.current.getBounds().pad(-0.2).contains(ll)) mapRef.current.panTo(ll)
-    }
   }
 
   // Persistent "recording" notification: a visible reminder in the phone's
@@ -224,7 +359,32 @@ export default function DistanceRecorder({ open, onClose, session, taskId, piece
     recorder.current = new TrackRecorder({ onUpdate, onError: setError })
     await recorder.current.start()
     setRec((r) => ({ ...r, running: true, paused: false }))
+    // While recording: always follow the dot, and cap how far out the operator
+    // can zoom so the recorded trail stays visible on screen.
+    setFollowMode((m) => (m === 0 ? 1 : m))
+    mapRef.current?.setMinZoom(15)
     showRecordingNotification()
+  }
+
+  // Compass button: recenter+follow → rotate-with-heading → free.
+  function cycleFollowMode() {
+    setFollowMode((m) => {
+      const next = (m + 1) % 3
+      if (next === 1) {
+        // Snap back to the machine at a working zoom, keep following north-up.
+        const p = smooth.current.pos || smooth.current.target
+        if (p && mapRef.current) mapRef.current.setView(p, Math.max(mapRef.current.getZoom(), 17))
+      }
+      if (next === 2) {
+        // iOS only grants compass data after an explicit ask inside a tap.
+        try {
+          if (typeof DeviceOrientationEvent !== 'undefined') DeviceOrientationEvent.requestPermission?.().catch(() => {})
+        } catch {
+          /* not iOS */
+        }
+      }
+      return next
+    })
   }
 
   const pause = () => recorder.current?.pause()
@@ -245,6 +405,7 @@ export default function DistanceRecorder({ open, onClose, session, taskId, piece
     const result = r.stop()
     recorder.current = null
     clearRecordingNotification()
+    mapRef.current?.setMinZoom(1) // recording over — release the zoom-out cap
     if (!result.points.length || result.distance <= 0) {
       // Nothing measured — just reset, don't save an empty track.
       setRec({ running: false, paused: false, distance: 0, points: [] })
@@ -273,24 +434,36 @@ export default function DistanceRecorder({ open, onClose, session, taskId, piece
     }
   }
 
-  function exportMonth(kind) {
-    const tracks = (monthTracks || [])
-      .filter((t) => t.points?.length)
-      .map((t) => ({
-        name: `${t.pieceRateName || 'Work'} · ${t.dayKey} · ${Math.round(t.distanceMeters)} m`,
-        points: t.points,
-        distanceMeters: t.distanceMeters,
-        startedAt: t.startedAt
-      }))
+  // Paths only — the exporters deliberately drop timestamps, job names and
+  // distances, so the file is just the drawn lines. Target is either the whole
+  // month or one selected track.
+  function runExport(kind) {
+    const target = exportTarget
+    if (!target) return
+    const single = target !== 'month'
+    const source = single ? [target] : monthTracks || []
+    const tracks = source.filter((t) => t.points?.length).map((t) => ({ points: t.points }))
     if (!tracks.length) return
-    const docName = `${session?.operatorName || 'Operator'} — ${monthLabel(monthKey)}`
-    const base = `${(session?.operatorName || 'operator').replace(/\s+/g, '_')}_tracks_${monthKey}`
+    setExportTarget(null)
+    const who = session?.operatorName || 'Operator'
+    const slug = who.replace(/\s+/g, '_')
+    const docName = single ? `${who} — ${dateOnly(target.startedAt)}` : `${who} — ${monthLabel(monthKey)}`
+    const stamp = single ? `${target.dayKey}_${timeOnly(target.startedAt).replace(':', '')}` : monthKey
+    const base = `${slug}_path${single ? '' : 's'}_${stamp}`
     if (kind === 'kml') downloadFile(`${base}.kml`, tracksToKML(tracks, docName), 'application/vnd.google-earth.kml+xml')
     else downloadFile(`${base}.gpx`, tracksToGPX(tracks, docName), 'application/gpx+xml')
   }
 
   if (!open) return null
   const idle = !rec.running
+  const hasExport = idle && (monthTracks || []).some((t) => t.points?.length)
+  // What the export dialog is about to write (a track chooser closes with its
+  // detail panel, so guard on `selected` too).
+  const exportOpen = exportTarget && (exportTarget === 'month' || selected)
+  const exportList = exportOpen
+    ? (exportTarget === 'month' ? monthTracks || [] : [exportTarget]).filter((t) => t.points?.length)
+    : []
+  const exportMeters = exportList.reduce((s, t) => s + (Number(t.distanceMeters) || 0), 0)
   // Gate Start on a fix at least as tight as what the recorder will accept —
   // otherwise the first points would be silently rejected anyway.
   const gpsReady = fix?.accuracy != null && fix.accuracy <= MAX_ACCURACY_M
@@ -299,8 +472,91 @@ export default function DistanceRecorder({ open, onClose, session, taskId, piece
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black">
-      {/* Map fills the screen */}
-      <div ref={mapDiv} className="min-h-0 flex-1" />
+      {/* Map fills the screen. It sits inside an oversized rotating wrapper so
+          heading-up mode can spin it without exposing bare corners. */}
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        <div
+          ref={rotWrap}
+          className="absolute left-1/2 top-1/2 h-[150%] w-[150%] will-change-transform"
+          style={{ transform: 'translate(-50%, -50%) rotate(0deg)' }}
+        >
+          <div ref={mapDiv} className="h-full w-full" />
+        </div>
+      </div>
+
+      {/* Export dialog — centered, says what will be written, picks the format */}
+      {exportOpen && (
+        <div
+          className="absolute inset-0 z-[1100] flex items-center justify-center bg-black/50 p-6"
+          onClick={() => setExportTarget(null)}
+        >
+          <div
+            className="w-full max-w-[290px] rounded-2xl bg-white p-4 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-base font-bold text-slate-800">
+              {exportTarget === 'month' ? `Export ${monthLabel(monthKey)}` : 'Export this track'}
+            </p>
+            <p className="mt-1 text-sm text-slate-600">
+              {exportList.length} track{exportList.length === 1 ? '' : 's'} · {fmtM(exportMeters)}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">The file contains the path only. Choose a format:</p>
+            <div className="mt-4 flex gap-2">
+              <Button type="button" full onClick={() => runExport('kml')}>
+                KML
+              </Button>
+              <Button type="button" full variant="secondary" onClick={() => runExport('gpx')}>
+                GPX
+              </Button>
+            </div>
+            {/* Google Earth's GPX importer ticks both "Create KML Tracks" and
+                "Create KML LineStrings", which shows every path twice — KML has
+                no such option, so point people there. */}
+            <div className="mt-1.5 flex gap-2 text-center text-[10px] leading-tight text-slate-500">
+              <span className="flex-1">Google Earth</span>
+              <span className="flex-1">GPS apps / GIS</span>
+            </div>
+            <Button type="button" full variant="ghost" className="mt-2" onClick={() => setExportTarget(null)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Imagery credit (Leaflet's own attribution corner is off-screen) */}
+      <span className="absolute left-1 top-1 z-[1000] rounded bg-black/40 px-1.5 py-0.5 text-[9px] text-white/60">
+        {SAT_ATTRIB}
+      </span>
+
+      {/* Compass: recenter+follow → heading-up → free */}
+      <button
+        type="button"
+        onClick={cycleFollowMode}
+        className="absolute bottom-24 right-3 z-[1000] flex h-12 w-12 items-center justify-center rounded-full bg-white text-slate-700 shadow-lg active:bg-slate-100"
+        aria-label={followMode === 0 ? 'Follow my position' : followMode === 1 ? 'Rotate with facing direction' : 'Free map'}
+      >
+        {followMode === 2 ? (
+          /* heading-up: compass needle */
+          <svg viewBox="0 0 24 24" width="26" height="26">
+            <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-brand" />
+            <polygon points="12,4 15,12 12,10.5 9,12" fill="#dc2626" />
+            <polygon points="12,20 9,12 12,13.5 15,12" fill="#94a3b8" />
+          </svg>
+        ) : followMode === 1 ? (
+          /* following, north-up: filled crosshair */
+          <svg viewBox="0 0 24 24" width="26" height="26" className="text-brand">
+            <circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" strokeWidth="2" />
+            <circle cx="12" cy="12" r="3" fill="currentColor" />
+            <path d="M12 1v4M12 19v4M1 12h4M19 12h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        ) : (
+          /* free: hollow crosshair */
+          <svg viewBox="0 0 24 24" width="26" height="26" className="text-slate-400">
+            <circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" strokeWidth="2" />
+            <path d="M12 1v4M12 19v4M1 12h4M19 12h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        )}
+      </button>
 
       {/* Top bar: distance + close */}
       <div className="pt-safe absolute inset-x-0 top-0 z-[1000] flex items-start justify-between p-3">
@@ -309,7 +565,7 @@ export default function DistanceRecorder({ open, onClose, session, taskId, piece
           <p ref={distEl} className="text-2xl font-bold leading-tight">0 m</p>
           <p className="text-[11px] text-white/70">
             {rec.running ? (rec.paused ? 'Paused' : 'Recording…') : 'This recording'}
-            {' · '}bulan ini {fmtM(monthTotal)}
+            {' · '}this month {fmtM(monthTotal)}
           </p>
           <p className={`text-[11px] font-medium ${accColor}`}>
             {accNow != null ? `GPS ±${Math.round(accNow)} m` : 'Getting GPS…'}
@@ -331,12 +587,64 @@ export default function DistanceRecorder({ open, onClose, session, taskId, piece
 
       {/* Bottom controls */}
       <div className="pb-safe absolute inset-x-0 bottom-0 z-[1000] space-y-2 p-3">
-        {error && <p className="rounded-lg bg-black/70 px-3 py-2 text-center text-sm text-red-300">{error}</p>}
-        {rec.running && (
-          <p className="rounded-lg bg-black/70 px-3 py-1.5 text-center text-[11px] text-white/80">
-            Screen stays awake while recording. If it turns off anyway, ground covered is
-            added as a straight line when you come back.
-          </p>
+        {/* Details of the tapped track — sits just above the controls on a dark
+            translucent panel, so the map (and the highlighted line) stay visible. */}
+        {selected && (
+          // Same flex row as the buttons below, with a hidden copy of the
+          // Export button as a spacer — so the panel ends exactly where the
+          // Start button ends and never runs under Export.
+          <div className="flex gap-2">
+            <div className="relative min-w-0 flex-1 rounded-xl bg-black/70 px-3 py-2 text-white">
+              {/* Bare × pinned to the panel's top-right corner */}
+              <button
+                type="button"
+                onClick={() => setSelected(null)}
+                className="absolute right-1.5 top-0.5 p-1 text-lg leading-none text-white/60 active:text-white"
+                aria-label="Close details"
+              >
+                ×
+              </button>
+              {/* Job + distance share the top row; the date/time gets the full
+                  panel width below so AM/PM is never cut off on a phone. */}
+              <div className="flex items-center gap-2 pr-5">
+                <p className="min-w-0 flex-1 truncate text-sm font-semibold">{selected.pieceRateName || 'Work'}</p>
+                <span className="shrink-0 whitespace-nowrap text-base font-bold text-amber-300">
+                  {fmtM(selected.distanceMeters)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <p className="whitespace-nowrap text-[11px] text-white/70">
+                  {dateOnly(selected.endedAt || selected.startedAt)} · time:{' '}
+                  {timeOnly(selected.endedAt || selected.startedAt)}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setExportTarget((v) => (v === selected ? null : selected))}
+                  className="shrink-0 rounded-md bg-white/15 px-2 py-1 text-[11px] font-medium text-white active:bg-white/25"
+                >
+                  Export
+                </button>
+              </div>
+            </div>
+            {hasExport && (
+              // Must mirror the real button's label AND classes, or the panel
+              // won't line up with the Start-recording button.
+              <Button
+                type="button"
+                variant="secondary"
+                className="invisible whitespace-nowrap px-3 text-sm"
+                aria-hidden
+                tabIndex={-1}
+              >
+                Monthly export
+              </Button>
+            )}
+          </div>
+        )}
+        {/* Compact, left-hugging toast so it never reaches the compass button;
+            clears itself after a few seconds. */}
+        {error && (
+          <p className="w-fit max-w-[72%] rounded-lg bg-black/75 px-3 py-2 text-sm text-red-300">{error}</p>
         )}
         {idle ? (
           <div className="flex gap-2">
@@ -349,11 +657,15 @@ export default function DistanceRecorder({ open, onClose, session, taskId, piece
                     ? `Waiting for GPS… ±${Math.round(fix.accuracy)} m`
                     : 'Waiting for GPS…'}
             </Button>
-            {(monthTracks || []).some((t) => t.points?.length) && (
-              <>
-                <Button type="button" variant="secondary" onClick={() => exportMonth('kml')}>KML</Button>
-                <Button type="button" variant="secondary" onClick={() => exportMonth('gpx')}>GPX</Button>
-              </>
+            {hasExport && (
+              <Button
+                type="button"
+                variant="secondary"
+                className="whitespace-nowrap px-3 text-sm"
+                onClick={() => setExportTarget((v) => (v === 'month' ? null : 'month'))}
+              >
+                Monthly export
+              </Button>
             )}
           </div>
         ) : (
