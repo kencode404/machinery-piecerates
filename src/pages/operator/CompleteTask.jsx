@@ -380,18 +380,18 @@ export default function CompleteTask() {
     <form onSubmit={submit} className="pb-4">
       <PageHeader title="Finish task" subtitle={`Started ${dateTimeOf(task.startTime)}`} onBack={goBack} />
 
-      {/* Reference: the two start photos */}
-      <Card className="mb-4 p-3">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Start of task</p>
+      {/* Reference: the start photos — small thumbnails, this is just context */}
+      <Card className="mb-3 p-2">
+        <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Start of task</p>
         <div className="flex gap-2">
           <div className="flex-1">
-            <PhotoById id={task.startPhotoId} className="aspect-square w-full" />
-            <p className="mt-1 text-center text-[11px] text-slate-500">Meter · {timeOf(task.startTime)}</p>
+            <PhotoById id={task.startPhotoId} className="h-20 w-full" />
+            <p className="mt-0.5 text-center text-[11px] text-slate-500">Meter · {timeOf(task.startTime)}</p>
           </div>
           {task.workPhotoId && (
             <div className="flex-1">
-              <PhotoById id={task.workPhotoId} className="aspect-square w-full" />
-              <p className="mt-1 text-center text-[11px] text-slate-500">Photo 2</p>
+              <PhotoById id={task.workPhotoId} className="h-20 w-full" />
+              <p className="mt-0.5 text-center text-[11px] text-slate-500">Photo 2</p>
             </div>
           )}
         </div>
@@ -512,8 +512,16 @@ export default function CompleteTask() {
           value={endWorkPhoto}
           onChange={onEndWorkPhoto}
           detectTime={false}
+          previewHeight="h-28"
         />
-        <PhotoCapture label="Ending meter photo" required hint="Photo of the hour-meter / mileage" value={endPhoto} onChange={onEndPhoto} />
+        <PhotoCapture
+          label="Ending meter photo"
+          required
+          hint="Photo of the hour-meter / mileage"
+          value={endPhoto}
+          onChange={onEndPhoto}
+          previewHeight="h-28"
+        />
 
         <Card className="space-y-4 p-4">
           <Field label="End time" required hint="Taken from the photo — edit if needed">

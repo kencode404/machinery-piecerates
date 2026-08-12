@@ -416,7 +416,7 @@ export async function updateTask(taskId, patch, photos = {}) {
 export async function deleteTask(taskId, { skipLockCheck = false } = {}) {
   const task = await db.tasks.get(taskId)
   if (!skipLockCheck) await assertMonthUnlocked(task?.monthKey)
-  await db.transaction('rw', db.tasks, db.photos, db.tombstones, async () => {
+  await db.transaction('rw', db.tasks, db.photos, db.tracks, db.tombstones, async () => {
     const now = nowISO()
     const photos = await db.photos.where('taskId').equals(taskId).toArray()
     if (task?.serverId) {
@@ -435,6 +435,13 @@ export async function deleteTask(taskId, { skipLockCheck = false } = {}) {
       await db.tombstones.put({ id: uuid(), table: 'photos', serverId: pid, storagePath, createdAt: now })
     }
     await db.photos.where('taskId').equals(taskId).delete()
+    // GPS/drawn paths belong to the task — otherwise they'd linger on the maps
+    // after the record is gone.
+    const tracks = await db.tracks.where('taskId').equals(taskId).toArray()
+    for (const tr of tracks) {
+      await db.tombstones.put({ id: uuid(), table: 'tracks', serverId: tr.id, createdAt: now })
+      await db.tracks.delete(tr.id)
+    }
     await db.tasks.delete(taskId)
   })
   emitChange()
@@ -675,7 +682,17 @@ export async function deleteCompany(id) {
  * Save a finished map recording. Points come from TrackRecorder.stop().
  * The distance snapshot is what fills the task's quantity for meter-unit work.
  */
-export async function addTrack({ session, taskId, pieceRate, points, distanceMeters, startedAt, endedAt }) {
+export async function addTrack({
+  session,
+  taskId,
+  pieceRate,
+  points,
+  distanceMeters,
+  startedAt,
+  endedAt,
+  manual = false,
+  drawnBy = null
+}) {
   const started = startedAt || nowISO()
   await assertMonthUnlocked(monthKeyOf(started))
   const track = {
@@ -690,14 +707,64 @@ export async function addTrack({ session, taskId, pieceRate, points, distanceMet
     distanceMeters: Math.round((Number(distanceMeters) || 0) * 10) / 10,
     startedAt: started,
     endedAt: endedAt || nowISO(),
+    manual: !!manual, // drawn by an admin rather than recorded by GPS
+    drawnBy: manual ? drawnBy || null : null,
     dayKey: dayKeyOf(started),
     monthKey: monthKeyOf(started),
     syncStatus: SyncStatus.PENDING,
     updatedAt: nowISO()
   }
   await db.tracks.add(track)
+  await syncTaskQuantityFromTracks(taskId)
   emitChange()
   return track
+}
+
+/**
+ * Re-derive a task's quantity from its GPS/drawn paths and store it on the task
+ * itself, so an admin adding or deleting a path immediately reaches the
+ * operator's device (and payroll) through the normal task sync — not just the
+ * screen that happened to make the change.
+ */
+export async function syncTaskQuantityFromTracks(taskId) {
+  if (!taskId) return
+  const task = await db.tasks.get(taskId)
+  if (!task) return
+  const rows = (await db.tracks.where('taskId').equals(taskId).toArray()).sort((a, b) =>
+    (a.startedAt || '').localeCompare(b.startedAt || '')
+  )
+  const each = rows.map((t) => Math.round((Number(t.distanceMeters) || 0) * 10) / 10)
+  const total = each.length ? Math.round(each.reduce((s, n) => s + n, 0) * 10) / 10 : null
+  const unitPrice = numOrNull(task.unitPrice)
+  await db.tasks.update(taskId, {
+    quantity: total,
+    quantityExpr: each.length > 1 ? each.join('+') : null,
+    amount: total != null && unitPrice != null ? round2(total * unitPrice) : null,
+    syncStatus: SyncStatus.PENDING,
+    updatedAt: nowISO()
+  })
+}
+
+/**
+ * Replace a drawn path's geometry (admin vertex editing). GPS recordings are
+ * never reshaped — only hand-drawn paths can be edited.
+ */
+export async function updateTrackPoints(id, points, distanceMeters, { allowRecorded = false, editedBy = null } = {}) {
+  const tr = await db.tracks.get(id)
+  if (!tr) throw new Error('Path not found')
+  // Drawn paths are freely editable; a GPS recording may only be reshaped by an
+  // HQ admin, and the fact it was altered is stamped on the row.
+  if (!tr.manual && !allowRecorded) throw new Error('Only drawn paths can be edited.')
+  await assertMonthUnlocked(tr.monthKey)
+  await db.tracks.update(id, {
+    points: points || [],
+    distanceMeters: Math.round((Number(distanceMeters) || 0) * 10) / 10,
+    ...(tr.manual ? {} : { editedBy: editedBy || 'HQ admin' }),
+    syncStatus: SyncStatus.PENDING,
+    updatedAt: nowISO()
+  })
+  await syncTaskQuantityFromTracks(tr.taskId)
+  emitChange()
 }
 
 /** An operator's tracks for one month, oldest first (map overlay + export). */
@@ -728,6 +795,8 @@ export async function deleteTrack(id) {
     await db.tombstones.put({ id: uuid(), table: 'tracks', serverId: tr.id, createdAt: nowISO() })
     await db.tracks.delete(id)
   })
+  // Keep the task's quantity in step so the removal reaches every device.
+  await syncTaskQuantityFromTracks(tr.taskId)
   emitChange()
 }
 

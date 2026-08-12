@@ -134,6 +134,9 @@ export function toServerTrack(t) {
     distance_meters: t.distanceMeters ?? 0,
     started_at: t.startedAt,
     ended_at: t.endedAt,
+    manual: !!t.manual, // drawn by an admin instead of GPS-recorded
+    drawn_by: t.drawnBy ?? null,
+    edited_by: t.editedBy ?? null, // set when an HQ admin reshaped a recording
     day_key: t.dayKey,
     month_key: t.monthKey,
     updated_at: t.updatedAt
@@ -152,6 +155,9 @@ export function fromServerTrack(r) {
     distanceMeters: r.distance_meters ?? 0,
     startedAt: r.started_at,
     endedAt: r.ended_at,
+    manual: !!r.manual,
+    drawnBy: r.drawn_by ?? null,
+    editedBy: r.edited_by ?? null,
     dayKey: r.day_key,
     monthKey: r.month_key,
     updatedAt: r.updated_at,

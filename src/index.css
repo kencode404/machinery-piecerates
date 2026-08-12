@@ -52,6 +52,20 @@ button {
   }
 }
 
+/* Native date/time fields carry a wide intrinsic size (iOS renders them as
+   "12 Aug 2026 at 11:14"), which overflows their rounded box on a phone.
+   Force them to obey the container instead. */
+input[type='datetime-local'],
+input[type='date'],
+input[type='time'] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
 /* Hide number input spinners for a cleaner look. */
 input[type='number']::-webkit-outer-spin-button,
 input[type='number']::-webkit-inner-spin-button {

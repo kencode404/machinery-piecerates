@@ -24,7 +24,6 @@ import { toLocalInput, fromLocalInput, formatMoney, formatRate, dayKeyOf, monthK
 import { minutesBetween, formatHours } from '../../lib/duration.js'
 import { useAuth } from '../../auth/AuthContext.jsx'
 import PageHeader from '../../components/PageHeader.jsx'
-import { PhotoById, Lightbox } from '../../components/PhotoThumb.jsx'
 import PhotoCapture from '../../components/PhotoCapture.jsx'
 import { Button, Card, Field, NumberInput, TextInput, TextArea, Select, Spinner, Badge } from '../../components/ui.jsx'
 import { QuantityInput } from '../../components/QuantityInput.jsx'
@@ -71,7 +70,6 @@ export default function EditTask() {
   const locked = useLiveQuery(() => isMonthLocked(task?.monthKey), [task?.monthKey], false)
 
   const [f, setF] = useState(null)
-  const [zoom, setZoom] = useState(null)
   const [mapOpen, setMapOpen] = useState(false)
   // GPS paths recorded by the operator for this task. When any exist the
   // quantity is the measured total and must stay read-only here — editing it
@@ -330,7 +328,6 @@ export default function EditTask() {
     }
   }
 
-  const hasPhotos = task.startPhotoId || task.workPhotoId || task.endWorkPhotoId || task.endPhotoId
 
   return (
     <form onSubmit={save} className="pb-4">
@@ -353,17 +350,6 @@ export default function EditTask() {
         </div>
       )}
 
-      {hasPhotos && (
-        <Card className="mb-4 p-3">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Photos</p>
-          <div className="grid grid-cols-2 gap-2">
-            <PhotoFigure id={task.startPhotoId} label="Start meter" onZoom={setZoom} />
-            <PhotoFigure id={task.workPhotoId} label="Start photo 2" onZoom={setZoom} />
-            <PhotoFigure id={task.endWorkPhotoId} label="Proof of work" onZoom={setZoom} />
-            <PhotoFigure id={task.endPhotoId} label="End meter" onZoom={setZoom} />
-          </div>
-        </Card>
-      )}
 
       <Card className="space-y-4 p-4">
         <Field label="Operator" required>
@@ -489,8 +475,9 @@ export default function EditTask() {
             ))}
           </Select>
         </Field>
-        {/* GPS paths the operator recorded for this task — view only. */}
-        {(taskTracks || []).length > 0 && (
+        {/* Paths for this task. Also shown when there are none yet, so a manager
+            can open the map and draw the first one. */}
+        {((taskTracks || []).length > 0 || !locked) && (
           <button
             type="button"
             onClick={() => setMapOpen(true)}
@@ -499,11 +486,14 @@ export default function EditTask() {
             <div className="min-w-0">
               <p className="text-sm font-semibold text-brand-dark">GPS distance recording</p>
               <p className="text-xs text-slate-600">
-                {taskTracks.length} recording{taskTracks.length === 1 ? '' : 's'} ·{' '}
-                {trackTotal.toLocaleString()} m measured
+                {(taskTracks || []).length > 0
+                  ? `${taskTracks.length} recording${taskTracks.length === 1 ? '' : 's'} · ${trackTotal.toLocaleString()} m measured`
+                  : 'No paths yet — open the map to draw one'}
               </p>
             </div>
-            <span className="shrink-0 rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white">View map</span>
+            <span className="shrink-0 rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white">
+              {(taskTracks || []).length > 0 ? 'View map' : 'Open map'}
+            </span>
           </button>
         )}
 
@@ -547,17 +537,46 @@ export default function EditTask() {
         )}
       </Card>
 
+      {/* One photo section: tiles show what's on the record; tap the caption to
+          replace (with a confirm), tap the image to view it full screen. */}
       <Card className="mt-4 p-4">
-        <p className="mb-1 text-sm font-medium text-slate-700">
-          {hasPhotos ? 'Replace photos' : 'Add photos'}
-          <span className="text-slate-500"> (optional)</span>
+        <p className="mb-1 text-sm font-medium text-slate-700">Photos</p>
+        <p className="mb-2 text-xs text-slate-500">
+          Tap a photo to view · tap its label to replace. A new photo sets Start/End mode and fills the time + location.
         </p>
-        <p className="mb-2 text-xs text-slate-500">A photo sets Start/End mode and fills the time + location.</p>
         <div className="grid grid-cols-2 gap-2">
-          <PhotoCapture compact label="Start meter" value={startPhoto} onChange={(p) => onPhoto('start', p)} />
-          <PhotoCapture compact label="Start photo 2" value={workPhoto} onChange={(p) => onPhoto('work', p)} />
-          <PhotoCapture compact label="Proof of work" value={endWorkPhoto} onChange={(p) => onPhoto('endwork', p)} />
-          <PhotoCapture compact label="End meter" value={endPhoto} onChange={(p) => onPhoto('end', p)} />
+          <PhotoCapture
+            compact
+            confirmReplace
+            label="Start meter"
+            existingId={task.startPhotoId}
+            value={startPhoto}
+            onChange={(p) => onPhoto('start', p)}
+          />
+          <PhotoCapture
+            compact
+            confirmReplace
+            label="Start photo 2"
+            existingId={task.workPhotoId}
+            value={workPhoto}
+            onChange={(p) => onPhoto('work', p)}
+          />
+          <PhotoCapture
+            compact
+            confirmReplace
+            label="Proof of work"
+            existingId={task.endWorkPhotoId}
+            value={endWorkPhoto}
+            onChange={(p) => onPhoto('endwork', p)}
+          />
+          <PhotoCapture
+            compact
+            confirmReplace
+            label="End meter"
+            existingId={task.endPhotoId}
+            value={endPhoto}
+            onChange={(p) => onPhoto('end', p)}
+          />
         </div>
       </Card>
 
@@ -585,7 +604,6 @@ export default function EditTask() {
         </Button>
       </div>
 
-      <Lightbox url={zoom} onClose={() => setZoom(null)} />
 
       {/* Operator's recorded GPS paths — view + export only, no recording. */}
       {mapOpen && (
@@ -602,6 +620,34 @@ export default function EditTask() {
             tracks={taskTracks || []}
             boundary={(companies || []).find((c) => c.id === task.companyId)?.boundary || null}
             title={`${task.operatorName || 'Operator'} · ${task.pieceRateName || 'Work'}`}
+            // Site + HQ admin may draw a path; only HQ admin may delete one.
+            canDraw={!locked}
+            canDelete={user?.role === 'admin' && !locked}
+            canEditRecorded={user?.role === 'admin' && !locked}
+            editedBy={user?.role === 'admin' ? 'HQ admin' : 'Site admin'}
+            // With no paths yet, open on this record's own GPS position.
+            focus={
+              task.startGps?.lat != null
+                ? [task.startGps.lat, task.startGps.lng]
+                : task.endGps?.lat != null
+                  ? [task.endGps.lat, task.endGps.lng]
+                  : null
+            }
+            drawTarget={
+              locked
+                ? null
+                : {
+                    taskId: id,
+                    session: {
+                      operatorId: task.operatorId,
+                      operatorName: task.operatorName,
+                      companyId: task.companyId
+                    },
+                    pieceRate: rate,
+                    // Role, not the person — that's what matters for audit.
+                    drawnBy: user?.role === 'admin' ? 'HQ admin' : 'Site admin'
+                  }
+            }
             onClose={() => setMapOpen(false)}
           />
         </Suspense>
@@ -610,18 +656,3 @@ export default function EditTask() {
   )
 }
 
-function PhotoFigure({ id, label, onZoom }) {
-  if (!id) {
-    return (
-      <div className="flex aspect-square items-center justify-center rounded-lg bg-slate-100 text-[10px] text-slate-300">
-        No {label}
-      </div>
-    )
-  }
-  return (
-    <div>
-      <PhotoById id={id} className="aspect-square w-full" onZoom={onZoom} />
-      <p className="mt-1 text-center text-[10px] text-slate-500">{label}</p>
-    </div>
-  )
-}

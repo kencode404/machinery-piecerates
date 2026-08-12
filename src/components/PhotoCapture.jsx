@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { getPhoto } from '../db/repo.js'
 import { capturePhotoMeta, getDevicePosition } from '../lib/photoMeta.js'
 import { compressImage } from '../lib/image.js'
 import { GpsSource } from '../db/models.js'
@@ -25,13 +27,31 @@ export default function PhotoCapture({
   required,
   compact,
   detectTime = true,
-  detectLocation = true
+  detectLocation = true,
+  // Admin edit: show the photo already saved on the record (by id) in the tile,
+  // and confirm before it gets replaced.
+  existingId = null,
+  confirmReplace = false,
+  previewHeight = 'h-44' // shorter previews keep long forms scrollable
 }) {
   const inputRef = useRef(null)
   const [busy, setBusy] = useState(false)
   const [detecting, setDetecting] = useState(false)
   const [zoom, setZoom] = useState(null)
-  const previewUrl = usePhotoUrl(value)
+  // Fall back to the record's saved photo until a new one is picked.
+  const saved = useLiveQuery(
+    () => (existingId && !value ? getPhoto(existingId) : Promise.resolve(null)),
+    [existingId, value],
+    null
+  )
+  const shown = value || saved
+  const previewUrl = usePhotoUrl(shown)
+
+  // Ask before overwriting a photo that is already on the record.
+  const pickFile = () => {
+    if (confirmReplace && !value && saved && !window.confirm('Replace this photo?')) return
+    inputRef.current?.click()
+  }
   const tokenRef = useRef(0) // invalidates a stale in-flight detection
   const warmGpsRef = useRef(null) // device fix warmed up when the form opened
 
@@ -118,10 +138,10 @@ export default function PhotoCapture({
     return (
       <div>
         <input ref={inputRef} type="file" accept="image/*" hidden onChange={handleFile} />
-        {!value ? (
+        {!shown ? (
           <button
             type="button"
-            onClick={() => inputRef.current?.click()}
+            onClick={pickFile}
             className="flex aspect-square w-full flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-slate-300 bg-white text-slate-500 active:bg-slate-50"
           >
             {busy ? <Spinner /> : <IconCamera width={20} height={20} />}
@@ -135,17 +155,21 @@ export default function PhotoCapture({
               onClick={() => previewUrl && setZoom(previewUrl)}
               className="h-full w-full object-cover"
             />
+            {/* Only a freshly picked photo can be cleared; a saved one is
+                replaced instead (tap the caption), never silently dropped. */}
+            {value && (
+              <button
+                type="button"
+                onClick={clear}
+                className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-sm leading-none text-white"
+                aria-label="Remove photo"
+              >
+                ×
+              </button>
+            )}
             <button
               type="button"
-              onClick={clear}
-              className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-sm leading-none text-white"
-              aria-label="Remove photo"
-            >
-              ×
-            </button>
-            <button
-              type="button"
-              onClick={() => inputRef.current?.click()}
+              onClick={pickFile}
               className="absolute inset-x-0 bottom-0 bg-black/50 py-0.5 text-center text-[10px] text-white"
             >
               {label || 'Change'}
@@ -195,7 +219,7 @@ export default function PhotoCapture({
               src={previewUrl || ''}
               alt=""
               onClick={() => previewUrl && setZoom(previewUrl)}
-              className="h-44 w-full object-cover"
+              className={`${previewHeight} w-full object-cover`}
             />
             {busy && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/30 text-white">

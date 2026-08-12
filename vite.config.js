@@ -30,7 +30,9 @@ export default defineConfig(({ mode }) => ({
         theme_color: '#ffffff',
         background_color: '#ffffff',
         display: 'standalone',
-        orientation: 'portrait',
+        // 'any' so the installed app can rotate — the GPS map is much easier to
+        // read in landscape. Forms are mobile-first and still fine either way.
+        orientation: 'any',
         // Relative so they work under a GitHub Pages sub-path.
         start_url: '.',
         scope: '.',

@@ -173,11 +173,11 @@ export default function AdminRecords() {
       {activeOpId ? (
         <>
           <div className="flex items-center justify-end gap-2">
-            {(monthTracks || []).length > 0 && (
-              <Button size="sm" variant="secondary" onClick={() => setMapOpen(true)}>
-                <IconPin width={16} height={16} /> Map
-              </Button>
-            )}
+            {/* Always available — the map still shows the company boundary and
+                lets a manager check the area even with nothing recorded yet. */}
+            <Button size="sm" variant="secondary" onClick={() => setMapOpen(true)}>
+              <IconPin width={16} height={16} /> Map
+            </Button>
             <Button size="sm" variant="secondary" onClick={() => navigate(`/admin/worklog/${activeOpId}?month=${monthKey}`)}>
               <IconReport width={16} height={16} /> Daily log
             </Button>
@@ -220,6 +220,22 @@ export default function AdminRecords() {
             readOnly
             tracks={monthTracks || []}
             boundary={(companies || []).find((c) => c.id === effectiveCompanyId)?.boundary || null}
+            // Existing paths can be reshaped here — each one carries its own
+            // taskId, so saving updates that task's quantity. Drawing a NEW path
+            // still needs a task, so it lives on the record's own map.
+            canDraw={!locked}
+            canDelete={user?.role === 'admin' && !locked}
+            canEditRecorded={user?.role === 'admin' && !locked}
+            editedBy={user?.role === 'admin' ? 'HQ admin' : 'Site admin'}
+            // Nothing recorded yet? Open on the operator's most recent work spot.
+            focus={(() => {
+              for (let i = (tasksCache || []).length - 1; i >= 0; i--) {
+                const t = tasksCache[i]
+                if (t.startGps?.lat != null) return [t.startGps.lat, t.startGps.lng]
+                if (t.endGps?.lat != null) return [t.endGps.lat, t.endGps.lng]
+              }
+              return null
+            })()}
             title={`${shownOperators.find((o) => o.id === activeOpId)?.name || 'Operator'} · ${monthLabel(monthKey)}`}
             onClose={() => setMapOpen(false)}
           />

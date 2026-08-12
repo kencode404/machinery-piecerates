@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { TrackRecorder, MAX_ACCURACY_M } from '../lib/geotrack.js'
-import { addTrack, listTracks } from '../db/repo.js'
+import { TrackRecorder, MAX_ACCURACY_M, trackDistance } from '../lib/geotrack.js'
+import { addTrack, listTracks, deleteTrack, updateTrackPoints } from '../db/repo.js'
 import { monthKeyOf, monthLabel } from '../lib/format.js'
 import { tracksToKML, tracksToGPX, downloadFile } from '../lib/geotrack.js'
 import { Button } from './ui.jsx'
@@ -41,7 +41,15 @@ export default function DistanceRecorder({
   tracks: tracksProp = null,
   title = null,
   // Company site outline (parsed KML/GPX), drawn under everything else.
-  boundary = null
+  boundary = null,
+  // Managers: site + HQ admin may draw a path (needs drawTarget); only HQ admin
+  // may delete one. Operators get neither.
+  canDraw = false,
+  canDelete = false,
+  canEditRecorded = false, // HQ admin may also reshape a GPS recording
+  editedBy = null, // role stamped on a reshaped recording (monthly map has no drawTarget)
+  focus = null, // [lat, lng] to open on when there are no paths/boundary to frame
+  drawTarget = null // { taskId, session: {operatorId, operatorName, companyId}, pieceRate, drawnBy }
 }) {
   const mapDiv = useRef(null)
   const mapRef = useRef(null)
@@ -61,6 +69,24 @@ export default function DistanceRecorder({
   // or a single track object (exported from its detail panel).
   const [exportTarget, setExportTarget] = useState(null)
   const [selected, setSelected] = useState(null) // past track tapped on the map
+  // Admin draw mode: tap the map to lay points; distance is the haversine sum.
+  const [drawing, setDrawing] = useState(false)
+  const [drawPts, setDrawPts] = useState([])
+  const drawLine = useRef(null)
+  const handleLayer = useRef(null) // draggable vertex + insert handles
+  const drawingRef = useRef(false)
+  const [editingId, setEditingId] = useState(null) // saved drawn path being reshaped
+  useEffect(() => {
+    drawingRef.current = drawing
+  }, [drawing])
+  const committedDistance = useMemo(
+    () => trackDistance(drawPts.map(([lat, lng]) => ({ lat, lng }))),
+    [drawPts]
+  )
+  // During a vertex drag the points aren't committed to state yet (that would
+  // rebuild the handles mid-gesture), so the live figure is tracked separately.
+  const [dragDistance, setDragDistance] = useState(null)
+  const drawDistance = dragDistance ?? committedDistance
 
   // Visual smoothing: GPS fixes land ~once a second, which looks choppy if the
   // dot/line/counter jump to each fix. A 60fps loop glides the shown position
@@ -107,8 +133,10 @@ export default function DistanceRecorder({
     if (!open || !mapDiv.current) return
     // No Leaflet corner controls: the map div is oversized for rotation, so its
     // corners sit off-screen — zoom is pinch/scroll, credit is our own overlay.
-    const map = L.map(mapDiv.current, { zoomControl: false, attributionControl: false })
-    L.tileLayer(SAT_TILES, { maxZoom: 19 }).addTo(map)
+    const map = L.map(mapDiv.current, { zoomControl: false, attributionControl: false, maxZoom: 22 })
+    // Imagery is native up to z19; beyond that Leaflet upscales the same tiles.
+    // Blurrier, but it makes placing/dragging vertices much easier.
+    L.tileLayer(SAT_TILES, { maxNativeZoom: 19, maxZoom: 22 }).addTo(map)
     map.setView(FALLBACK_CENTER, 6)
     mapRef.current = map
     // Company boundary sits under the tracks (added first).
@@ -141,8 +169,14 @@ export default function DistanceRecorder({
     // Pause follow-centering while the operator pinches/zooms.
     map.on('zoomstart', () => (zooming.current = true))
     map.on('zoomend', () => (zooming.current = false))
-    // Tapping empty map clears the inspected track (track taps don't bubble).
-    map.on('click', () => setSelected(null))
+    // Draw mode consumes taps as points; otherwise a tap clears the selection
+    // (track taps don't bubble up here).
+    drawLine.current = L.polyline([], { color: '#22c55e', weight: 5, dashArray: '8 5' }).addTo(map)
+    handleLayer.current = L.layerGroup().addTo(map)
+    map.on('click', (e) => {
+      if (drawingRef.current) setDrawPts((p) => [...p, [e.latlng.lat, e.latlng.lng]])
+      else setSelected(null)
+    })
 
     // The overlay animates in — Leaflet needs a size poke once it's visible.
     setTimeout(() => mapRef.current?.invalidateSize(), 60)
@@ -167,6 +201,26 @@ export default function DistanceRecorder({
 
   // Shortest-way easing between two angles (handles the 359°→1° wrap).
   const easeAngle = (cur, target, k) => cur + ((((target - cur + 540) % 360) - 180) * k)
+
+  // Leaflet caches the container size; after a rotation or any resize the tiles
+  // are laid out for the old dimensions and the rest of the view stays blank.
+  // Re-measure on both the window events and an observer on the container.
+  useEffect(() => {
+    if (!open) return
+    const refresh = () => mapRef.current?.invalidateSize()
+    window.addEventListener('resize', refresh)
+    window.addEventListener('orientationchange', refresh)
+    let ro
+    if (typeof ResizeObserver !== 'undefined' && mapDiv.current) {
+      ro = new ResizeObserver(refresh)
+      ro.observe(mapDiv.current)
+    }
+    return () => {
+      window.removeEventListener('resize', refresh)
+      window.removeEventListener('orientationchange', refresh)
+      ro?.disconnect()
+    }
+  }, [open])
 
   // Errors are transient notices — clear them so they don't sit over the map.
   useEffect(() => {
@@ -287,6 +341,54 @@ export default function DistanceRecorder({
     return () => navigator.geolocation.clearWatch(wid)
   }, [open, rec.running])
 
+  // Mirror the drawn points onto the map line, and rebuild the edit handles:
+  // a solid dot per vertex (drag to move, tap to delete) and a hollow dot at
+  // each midpoint (drag or tap to insert a new vertex there).
+  useEffect(() => {
+    drawLine.current?.setLatLngs(drawPts)
+    const layer = handleLayer.current
+    if (!layer) return
+    layer.clearLayers()
+    if (!drawing) return
+
+    const dot = (fill, size) =>
+      L.divIcon({
+        className: '',
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2],
+        html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${fill};border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.5)"></div>`
+      })
+
+    drawPts.forEach((p, i) => {
+      const m = L.marker(p, { draggable: true, icon: dot('#22c55e', 18), zIndexOffset: 900 }).addTo(layer)
+      // Live-update the line while dragging; commit to state on release.
+      m.on('drag', (e) => {
+        const ll = e.target.getLatLng()
+        const next = drawPts.map((q, j) => (j === i ? [ll.lat, ll.lng] : q))
+        drawLine.current?.setLatLngs(next)
+        setDragDistance(trackDistance(next.map(([lat, lng]) => ({ lat, lng })))) // live readout
+      })
+      m.on('dragend', (e) => {
+        const ll = e.target.getLatLng()
+        setDrawPts((prev) => prev.map((q, j) => (j === i ? [ll.lat, ll.lng] : q)))
+        setDragDistance(null) // committed — fall back to the computed value
+      })
+      // Tap a vertex to remove it (keep at least two points).
+      m.on('click', () => setDrawPts((prev) => (prev.length > 2 ? prev.filter((_, j) => j !== i) : prev)))
+    })
+
+    for (let i = 1; i < drawPts.length; i++) {
+      const a = drawPts[i - 1]
+      const b = drawPts[i]
+      const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
+      const m = L.marker(mid, { draggable: true, icon: dot('rgba(34,197,94,.45)', 13), zIndexOffset: 800 }).addTo(layer)
+      const insertAt = (ll) => setDrawPts((prev) => [...prev.slice(0, i), [ll.lat, ll.lng], ...prev.slice(i)])
+      m.on('click', () => insertAt({ lat: mid[0], lng: mid[1] }))
+      // Dragging a midpoint creates the vertex where it's dropped.
+      m.on('dragend', (e) => insertAt(e.target.getLatLng()))
+    }
+  }, [drawPts, drawing])
+
   // Draw the company boundary: a background reference layer, non-interactive so
   // it never steals taps from the tracks.
   useEffect(() => {
@@ -312,6 +414,7 @@ export default function DistanceRecorder({
     layer.clearLayers()
     for (const t of monthTracks || []) {
       if (!t.points?.length) continue
+      if (t.id === editingId) continue // its green editable copy is on the map
       const latlngs = t.points.map((p) => [p.lat, p.lng])
       // Tap a track → highlight it and open a small popup pinned to the tap
       // point, showing the job, finish time and distance.
@@ -352,16 +455,23 @@ export default function DistanceRecorder({
       // map still opens somewhere meaningful rather than the world view).
       let b = layer.getBounds?.()
       if (!b?.isValid()) b = boundaryLayer.current?.getBounds?.()
+      const m = mapRef.current
       if (b?.isValid()) {
         centered.current = true
-        const m = mapRef.current
         setTimeout(() => {
           m?.invalidateSize()
           m?.fitBounds(b, { padding: [40, 40], maxZoom: 18 })
         }, 90)
+      } else if (focus?.[0] != null) {
+        // Nothing to frame — open where the work actually happened.
+        centered.current = true
+        setTimeout(() => {
+          m?.invalidateSize()
+          m?.setView(focus, 17)
+        }, 90)
       }
     }
-  }, [open, monthTracks, selected, readOnly])
+  }, [open, monthTracks, selected, readOnly, editingId, focus])
 
   function onUpdate({ points, distance, lastFix, paused }) {
     setRec({ running: !!recorder.current?.running, paused, distance, points, lastFix })
@@ -444,6 +554,70 @@ export default function DistanceRecorder({
 
   const pause = () => recorder.current?.pause()
   const resume = () => recorder.current?.resume()
+
+  // ---- Admin: delete a path, or draw one by tapping the map --------------
+
+  async function removeSelected() {
+    if (!selected) return
+    if (!window.confirm(`Delete this ${fmtM(selected.distanceMeters)} path? The quantity updates everywhere.`)) return
+    setSaving(true)
+    try {
+      await deleteTrack(selected.id)
+      setSelected(null)
+    } catch (e) {
+      setError(e.message || 'Could not delete that path.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function saveDrawn() {
+    if (drawPts.length < 2) return
+    const pts = drawPts.map(([lat, lng]) => ({ lat, lng, t: 0 }))
+    setSaving(true)
+    try {
+      if (editingId) {
+        // Reshaped an existing path (drawn, or a recording when HQ admin).
+        await updateTrackPoints(editingId, pts, drawDistance, {
+          allowRecorded: canEditRecorded,
+          editedBy: editedBy || drawTarget?.drawnBy || 'HQ admin'
+        })
+      } else {
+        if (!drawTarget) return
+        await addTrack({
+          session: drawTarget.session,
+          taskId: drawTarget.taskId,
+          pieceRate: drawTarget.pieceRate,
+          points: pts,
+          distanceMeters: drawDistance,
+          manual: true,
+          drawnBy: drawTarget.drawnBy || null
+        })
+      }
+      cancelDraw()
+    } catch (e) {
+      setError(e.message || 'Could not save the drawn path.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function cancelDraw() {
+    setDrawing(false)
+    setDrawPts([])
+    setEditingId(null)
+  }
+
+  // Reshape a saved path: load its points into draw mode. The recording's
+  // original date/time is never changed — only its geometry.
+  function editSelected() {
+    if (!selected) return
+    if (!(selected.manual ? canDraw : canEditRecorded)) return
+    setDrawPts((selected.points || []).map((p) => [p.lat, p.lng]))
+    setEditingId(selected.id)
+    setSelected(null)
+    setDrawing(true)
+  }
 
   // Snap the glide layer back to zero (line cleared, counter reset).
   function resetSmooth() {
@@ -587,6 +761,21 @@ export default function DistanceRecorder({
         {SAT_ATTRIB}
       </span>
 
+      {/* HQ admin: start drawing a path (sits above the compass) */}
+      {readOnly && canDraw && drawTarget && !drawing && (
+        <button
+          type="button"
+          onClick={() => setDrawing(true)}
+          className="absolute bottom-40 right-3 z-[1000] flex h-12 w-12 items-center justify-center rounded-full bg-white text-slate-700 shadow-lg active:bg-slate-100"
+          aria-label="Draw a path"
+        >
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+          </svg>
+        </button>
+      )}
+
       {/* Compass: recenter+follow → heading-up → free */}
       <button
         type="button"
@@ -622,9 +811,21 @@ export default function DistanceRecorder({
         <div className="rounded-xl bg-black/70 px-4 py-2 text-white shadow">
           {readOnly ? (
             <>
-              <p className="text-2xl font-bold leading-tight">{fmtM(monthTotal)}</p>
+              {/* While drawing/editing the headline total follows the live shape:
+                  everything else saved, plus the path currently being edited. */}
+              <p className="text-2xl font-bold leading-tight">
+                {fmtM(
+                  drawing
+                    ? (monthTracks || [])
+                        .filter((t) => t.id !== editingId)
+                        .reduce((s, t) => s + (Number(t.distanceMeters) || 0), 0) + drawDistance
+                    : monthTotal
+                )}
+              </p>
               <p className="text-[11px] text-white/70">
-                {title || `${(monthTracks || []).length} recording${(monthTracks || []).length === 1 ? '' : 's'}`}
+                {drawing
+                  ? `${editingId ? 'Editing' : 'Drawing'} · this path ${fmtM(drawDistance)}`
+                  : title || `${(monthTracks || []).length} recording${(monthTracks || []).length === 1 ? '' : 's'}`}
               </p>
             </>
           ) : (
@@ -685,14 +886,48 @@ export default function DistanceRecorder({
                   {dateOnly(selected.endedAt || selected.startedAt)} · time:{' '}
                   {timeOnly(selected.endedAt || selected.startedAt)}
                 </p>
-                <button
-                  type="button"
-                  onClick={() => setExportTarget((v) => (v === selected ? null : selected))}
-                  className="shrink-0 rounded-md bg-white/15 px-2 py-1 text-[11px] font-medium text-white active:bg-white/25"
-                >
-                  Export
-                </button>
+                <div className="flex shrink-0 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setExportTarget((v) => (v === selected ? null : selected))}
+                    className="rounded-md bg-white/15 px-2 py-1 text-[11px] font-medium text-white active:bg-white/25"
+                  >
+                    Export
+                  </button>
+                  {/* Drawn paths: site + HQ admin. GPS recordings: HQ admin only. */}
+                  {(selected.manual ? canDraw : canEditRecorded) && (
+                    <button
+                      type="button"
+                      onClick={editSelected}
+                      className="rounded-md bg-green-500/80 px-2 py-1 text-[11px] font-medium text-white active:bg-green-500"
+                    >
+                      Edit
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button
+                      type="button"
+                      onClick={removeSelected}
+                      disabled={saving}
+                      className="rounded-md bg-red-500/80 px-2 py-1 text-[11px] font-medium text-white active:bg-red-500 disabled:opacity-50"
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
               </div>
+              {/* Audit row: who drew it, or that a recording was reshaped */}
+              {selected.manual ? (
+                <p className="text-[11px] font-medium text-amber-300">
+                  {selected.drawnBy ? `Drawn by ${selected.drawnBy}` : 'Drawn manually'}
+                </p>
+              ) : (
+                selected.editedBy && (
+                  <p className="text-[11px] font-medium text-amber-300">
+                    Track edited by {selected.editedBy}
+                  </p>
+                )
+              )}
             </div>
             {hasExport && !readOnly && (
               // Must mirror the real button's label AND classes, or the panel
@@ -715,11 +950,37 @@ export default function DistanceRecorder({
           <p className="w-fit max-w-[72%] rounded-lg bg-black/75 px-3 py-2 text-sm text-red-300">{error}</p>
         )}
         {readOnly ? (
-          // Admin: inspect + export only, no recording controls.
-          hasExport && (
-            <Button type="button" full variant="secondary" onClick={() => setExportTarget('month')}>
-              Export
-            </Button>
+          drawing ? (
+            // HQ admin drawing a path by tapping the map
+            <>
+              <p className="w-fit rounded-lg bg-black/75 px-3 py-1.5 text-xs text-white">
+                Tap map to add · drag dots to move · tap a dot to delete ·{' '}
+                <span className="font-bold text-green-300">{fmtM(drawDistance)}</span>
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setDrawPts((p) => p.slice(0, -1))}
+                  disabled={!drawPts.length || saving}
+                >
+                  Undo
+                </Button>
+                <Button type="button" variant="secondary" onClick={cancelDraw} disabled={saving}>
+                  Cancel
+                </Button>
+                <Button type="button" full onClick={saveDrawn} disabled={drawPts.length < 2 || saving}>
+                  {saving ? 'Saving…' : editingId ? 'Save changes' : 'Save path'}
+                </Button>
+              </div>
+            </>
+          ) : (
+            // Admin: inspect + export (drawing starts from the pen icon).
+            hasExport && (
+              <Button type="button" full variant="secondary" onClick={() => setExportTarget('month')}>
+                Export
+              </Button>
+            )
           )
         ) : idle ? (
           <div className="flex gap-2">
