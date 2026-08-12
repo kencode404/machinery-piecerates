@@ -814,17 +814,9 @@ export default function DistanceRecorder({
             <>
               {/* Updated at 60fps by the glide loop (imperative — avoids re-rendering per frame) */}
               <p ref={distEl} className="text-2xl font-bold leading-tight">0 m</p>
-              <p className="flex items-center gap-1.5 text-[11px] text-white/70">
-                {rec.running ? (
-                  <>
-                    {/* Blinking red dot + running clock: unmistakably live */}
-                    <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-500" />
-                    <span className="font-semibold text-red-300">REC {fmtElapsed(elapsed)}</span>
-                  </>
-                ) : (
-                  'This recording'
-                )}
-                <span>· this month {fmtM(monthTotal)}</span>
+              <p className="text-[11px] text-white/70">
+                {rec.running ? 'Recording…' : 'This recording'}
+                {' · '}this month {fmtM(monthTotal)}
               </p>
               <p className={`text-[11px] font-medium ${accColor}`}>
                 {accNow != null ? `GPS ±${Math.round(accNow)} m` : 'Getting GPS…'}
@@ -997,9 +989,16 @@ export default function DistanceRecorder({
         ) : (
           // No pause: stopping and starting again is the same thing, and each
           // recording adds to the task total.
-          <Button type="button" full onClick={endAndSave} disabled={saving}>
-            {saving ? 'Saving…' : '■ End & save'}
-          </Button>
+          <>
+            {/* Blinking dot + running clock, right above the stop button */}
+            <p className="flex w-fit items-center gap-2 rounded-lg bg-black/75 px-3 py-1.5 text-sm text-white">
+              <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-500" />
+              <span className="font-semibold text-red-300">REC {fmtElapsed(elapsed)}</span>
+            </p>
+            <Button type="button" full onClick={endAndSave} disabled={saving}>
+              {saving ? 'Saving…' : '■ End & save'}
+            </Button>
+          </>
         )}
       </div>
     </div>
