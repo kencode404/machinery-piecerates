@@ -664,6 +664,70 @@ export async function deleteCompany(id) {
   emitChange()
 }
 
+// ---------------------------------------------------------------------------
+// GPS tracks (map distance recordings)
+// ---------------------------------------------------------------------------
+
+/**
+ * Save a finished map recording. Points come from TrackRecorder.stop().
+ * The distance snapshot is what fills the task's quantity for meter-unit work.
+ */
+export async function addTrack({ session, taskId, pieceRate, points, distanceMeters, startedAt, endedAt }) {
+  const started = startedAt || nowISO()
+  await assertMonthUnlocked(monthKeyOf(started))
+  const track = {
+    id: uuid(),
+    operatorId: session.operatorId,
+    operatorName: session.operatorName ?? null,
+    taskId: taskId ?? null,
+    pieceRateId: pieceRate?.id ?? null,
+    pieceRateName: pieceRate?.name ?? null,
+    companyId: session.companyId ?? null,
+    points: points || [],
+    distanceMeters: Math.round((Number(distanceMeters) || 0) * 10) / 10,
+    startedAt: started,
+    endedAt: endedAt || nowISO(),
+    dayKey: dayKeyOf(started),
+    monthKey: monthKeyOf(started),
+    syncStatus: SyncStatus.PENDING,
+    updatedAt: nowISO()
+  }
+  await db.tracks.add(track)
+  emitChange()
+  return track
+}
+
+/** An operator's tracks for one month, oldest first (map overlay + export). */
+export async function listTracks({ operatorId, monthKey }) {
+  const rows = await db.tracks.where('[operatorId+monthKey]').equals([operatorId, monthKey]).toArray()
+  return rows.sort((a, b) => (a.startedAt || '').localeCompare(b.startedAt || ''))
+}
+
+/** Total recorded meters for one task (fills its quantity when unit is meters). */
+export async function taskTrackTotal(taskId) {
+  if (!taskId) return 0
+  const rows = await db.tracks.where('taskId').equals(taskId).toArray()
+  return Math.round(rows.reduce((s, t) => s + (Number(t.distanceMeters) || 0), 0) * 10) / 10
+}
+
+/** All recordings for one task, oldest first — the audit breakdown of its quantity. */
+export async function listTaskTracks(taskId) {
+  if (!taskId) return []
+  const rows = await db.tracks.where('taskId').equals(taskId).toArray()
+  return rows.sort((a, b) => (a.startedAt || '').localeCompare(b.startedAt || ''))
+}
+
+export async function deleteTrack(id) {
+  const tr = await db.tracks.get(id)
+  if (!tr) return
+  await assertMonthUnlocked(tr.monthKey)
+  await db.transaction('rw', db.tracks, db.tombstones, async () => {
+    await db.tombstones.put({ id: uuid(), table: 'tracks', serverId: tr.id, createdAt: nowISO() })
+    await db.tracks.delete(id)
+  })
+  emitChange()
+}
+
 // ---- Claim extras (per operator + month: Bahagian B incentives) ----------
 const claimId = (operatorId, monthKey) => `${operatorId}__${monthKey}`
 
@@ -726,7 +790,10 @@ export async function purgeOldData(now = new Date()) {
   for (const t of oldTasks) await deleteTask(t.id, { skipLockCheck: true })
   const oldClaims = await db.claims.filter((c) => (c.monthKey || '') < cutoff).toArray()
   for (const c of oldClaims) await tombstoneAndDelete(db.claims, 'claims', c.id)
-  return { tasks: oldTasks.length, claims: oldClaims.length, cutoff }
+  // GPS tracks follow the same window (they're heavy: thousands of points each).
+  const oldTracks = await db.tracks.filter((t) => (t.monthKey || '') < cutoff).toArray()
+  for (const t of oldTracks) await tombstoneAndDelete(db.tracks, 'tracks', t.id)
+  return { tasks: oldTasks.length, claims: oldClaims.length, tracks: oldTracks.length, cutoff }
 }
 
 /** Save the Bahagian B incentive rows for one operator + month. */

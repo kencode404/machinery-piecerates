@@ -139,4 +139,24 @@ export const HOURLY_RATE_UNIT = 'jam'
  * @property {string} updatedAt
  */
 
+/**
+ * @typedef {Object} Track
+ * GPS distance recording made on the map while finishing a meter-unit task.
+ * @property {string} id
+ * @property {string} operatorId
+ * @property {string|null} operatorName - snapshot
+ * @property {string|null} taskId       - the task being finished when recorded
+ * @property {string|null} pieceRateId
+ * @property {string|null} pieceRateName - snapshot
+ * @property {string|null} companyId
+ * @property {Array<{lat:number,lng:number,t:number}>} points
+ * @property {number} distanceMeters   - haversine sum over points (rounded 1dp)
+ * @property {string} startedAt        - ISO
+ * @property {string} endedAt          - ISO
+ * @property {string} dayKey           - "YYYY-MM-DD" of startedAt
+ * @property {string} monthKey         - "YYYY-MM" (retention + monthly export)
+ * @property {string} syncStatus
+ * @property {string} updatedAt
+ */
+
 export const emptyGeo = () => ({ lat: null, lng: null, source: GpsSource.NONE, accuracy: null })

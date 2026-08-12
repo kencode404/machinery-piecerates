@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import basicSsl from '@vitejs/plugin-basic-ssl'
 
 // Expose the package.json version to the app (shown in Settings → About).
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url)))
@@ -9,10 +10,15 @@ const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url)))
 // https://vitejs.dev/config/
 // `base` is "/" locally, but "/<repo>/" on GitHub Pages — the deploy workflow
 // sets VITE_BASE to the repo name so assets resolve under the sub-path.
-export default defineConfig({
+// `npm run dev:https` (mode "https") serves over self-signed HTTPS so a PHONE
+// on the same Wi-Fi gets a secure context — required for GPS/geolocation,
+// wake lock and camera. The phone shows a one-time certificate warning
+// (Advanced → Proceed); that's expected for a self-signed dev cert.
+export default defineConfig(({ mode }) => ({
   base: process.env.VITE_BASE || '/',
   define: { 'import.meta.env.VITE_APP_VERSION': JSON.stringify(pkg.version) },
   plugins: [
+    ...(mode === 'https' ? [basicSsl()] : []),
     react(),
     VitePWA({
       registerType: 'autoUpdate',
@@ -51,4 +57,4 @@ export default defineConfig({
     })
   ],
   server: { host: true }
-})
+}))

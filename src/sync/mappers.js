@@ -121,6 +121,44 @@ export function fromServerPhoto(r, existingBlob = null) {
   }
 }
 
+export function toServerTrack(t) {
+  return {
+    id: t.id,
+    operator_id: t.operatorId ?? null,
+    operator_name: t.operatorName ?? null,
+    task_id: t.taskId ?? null,
+    piece_rate_id: t.pieceRateId ?? null,
+    piece_rate_name: t.pieceRateName ?? null,
+    company_id: t.companyId ?? null,
+    points: t.points ?? [], // jsonb [{lat,lng,t}]
+    distance_meters: t.distanceMeters ?? 0,
+    started_at: t.startedAt,
+    ended_at: t.endedAt,
+    day_key: t.dayKey,
+    month_key: t.monthKey,
+    updated_at: t.updatedAt
+  }
+}
+export function fromServerTrack(r) {
+  return {
+    id: r.id,
+    operatorId: r.operator_id ?? null,
+    operatorName: r.operator_name ?? null,
+    taskId: r.task_id ?? null,
+    pieceRateId: r.piece_rate_id ?? null,
+    pieceRateName: r.piece_rate_name ?? null,
+    companyId: r.company_id ?? null,
+    points: r.points ?? [],
+    distanceMeters: r.distance_meters ?? 0,
+    startedAt: r.started_at,
+    endedAt: r.ended_at,
+    dayKey: r.day_key,
+    monthKey: r.month_key,
+    updatedAt: r.updated_at,
+    syncStatus: SyncStatus.SYNCED
+  }
+}
+
 export function toServerCompany(c) {
   return { id: c.id, name: c.name, active: c.active, signers: c.signers ?? null, updated_at: c.updatedAt }
 }

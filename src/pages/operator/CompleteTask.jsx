@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useAuth } from '../../auth/AuthContext.jsx'
@@ -13,8 +13,13 @@ import {
   listOperatorMachines,
   listCompanies,
   getOperator,
-  kerjaJamRate
+  kerjaJamRate,
+  listTaskTracks
 } from '../../db/repo.js'
+import { isDistanceUnit } from '../../lib/dashboard.js'
+
+// Code-split: Leaflet only loads when an operator actually opens the map.
+const DistanceRecorder = lazy(() => import('../../components/DistanceRecorder.jsx'))
 import { TaskStatus, GpsSource } from '../../db/models.js'
 import { minutesBetween, formatHours } from '../../lib/duration.js'
 import { timeOf, dateTimeOf, formatMoney, formatRate, toLocalInput, fromLocalInput, formatLatLng, parseLatLng } from '../../lib/format.js'
@@ -59,6 +64,7 @@ export default function CompleteTask() {
   const [notes, setNotes] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [mapOpen, setMapOpen] = useState(false)
   const submitting = useRef(false)
   const hydrated = useRef(false)
   const rateHydrated = useRef(false)
@@ -167,6 +173,30 @@ export default function CompleteTask() {
     }
   }, [task, rateOptions])
 
+  // ---- GPS distance recording (meter-unit piece work only) ----------------
+  // Section shows only when the chosen work is measured in meters. Once a
+  // recording is saved for this task, the quantity is LOCKED to the measured
+  // total (not hand-editable) — live query so a save in the map overlay lands
+  // here immediately. Multiple recordings add up; tapping the locked quantity
+  // expands the per-recording audit breakdown.
+  const rateIsMeters = !!rate && isDistanceUnit(rate.unit)
+  const taskTracks = useLiveQuery(() => listTaskTracks(id), [id], [])
+  const trackTotal = useMemo(
+    () => Math.round((taskTracks || []).reduce((s, t) => s + (Number(t.distanceMeters) || 0), 0) * 10) / 10,
+    [taskTracks]
+  )
+  const qtyLocked = rateIsMeters && trackTotal > 0
+  const [showQtyFormula, setShowQtyFormula] = useState(false)
+  // The recordings as an Excel-style sum, e.g. "320+150" — shown on tap and
+  // saved as the record's quantity formula for audit.
+  const trackExpr = useMemo(
+    () => (taskTracks || []).map((t) => Math.round((Number(t.distanceMeters) || 0) * 10) / 10).join('+'),
+    [taskTracks]
+  )
+  useEffect(() => {
+    if (qtyLocked) setQuantity(String(trackTotal))
+  }, [qtyLocked, trackTotal])
+
   const endISO = fromLocalInput(endTime)
   const durationMins = task ? minutesBetween(task.startTime, endISO) : null
   const qtyNum = evalExpr(quantity)
@@ -188,7 +218,15 @@ export default function CompleteTask() {
     company,
     pieceRate: rate,
     quantity: qtyNum,
-    quantityExpr: isExpression(quantity) ? quantity.trim() : null,
+    // GPS-locked quantity keeps its per-recording sum (e.g. "320+150") as the
+    // formula for audit — same as a manually typed sum would.
+    quantityExpr: qtyLocked
+      ? (taskTracks || []).length > 1
+        ? trackExpr
+        : null
+      : isExpression(quantity)
+        ? quantity.trim()
+        : null,
     area,
     notes
   }
@@ -295,7 +333,13 @@ export default function CompleteTask() {
         company,
         pieceRate: rate,
         quantity: qtyNum,
-        quantityExpr: isExpression(quantity) ? quantity.trim() : null,
+        quantityExpr: qtyLocked
+          ? (taskTracks || []).length > 1
+            ? trackExpr
+            : null
+          : isExpression(quantity)
+            ? quantity.trim()
+            : null,
         area,
         notes
       })
@@ -354,6 +398,113 @@ export default function CompleteTask() {
       </Card>
 
       <div className="space-y-4">
+        <Card className="space-y-4 p-4">
+          <Field label="Machine used" required>
+            <Select
+              value={machineId}
+              onChange={(e) => {
+                setMachineId(e.target.value)
+                setRateId('') // rates depend on the machine
+              }}
+            >
+              <option value="">Choose machine…</option>
+              {(machines || []).map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </Select>
+            {machines && machines.length === 0 && (
+              <p className="mt-1 text-xs text-red-500">No machines assigned to you. Ask your admin.</p>
+            )}
+          </Field>
+
+          <Field label="Piece rate work" hint={machineId ? 'Optional — leave blank if not known yet' : 'Choose a machine first'}>
+            <Select value={rateId} onChange={(e) => setRateId(e.target.value)} disabled={!machineId}>
+              <option value="">{machineId ? 'Choose work type…' : 'Pick a machine first'}</option>
+              {rateOptions.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name} — {formatRate(r.price, currency)}/{r.unit}
+                </option>
+              ))}
+            </Select>
+            {machineId && rates && rates.length === 0 && (
+              <p className="mt-1 text-xs text-red-500">This machine has no piece rates yet. Ask your admin.</p>
+            )}
+          </Field>
+
+          {/* GPS distance recorder — only for work measured in meters */}
+          {rateIsMeters && (
+            <button
+              type="button"
+              onClick={() => {
+                // Request location INSIDE the tap gesture — browsers show the
+                // full permission dialog most reliably from a user action
+                // (outside a gesture Chrome may use its quiet, easy-to-miss UI).
+                navigator.geolocation?.getCurrentPosition(
+                  () => {},
+                  () => {},
+                  { maximumAge: Infinity, timeout: 5000 }
+                )
+                setMapOpen(true)
+              }}
+              className="flex w-full items-center justify-between rounded-xl border border-brand/40 bg-brand-light/50 px-3 py-3 text-left active:bg-brand-light"
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-brand-dark">Ukur jarak di peta (GPS)</p>
+                <p className="text-xs text-slate-600">
+                  {trackTotal > 0
+                    ? `Recorded for this task: ${trackTotal.toLocaleString()} m`
+                    : 'Optional — record the distance on the satellite map'}
+                </p>
+              </div>
+              <span className="shrink-0 rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white">Open map</span>
+            </button>
+          )}
+
+          <Field
+            label={`Quantity${rate ? ` (${rate.unit})` : ''}`}
+            hint={qtyLocked ? 'Measured on the map — tap to see the sum' : 'Optional — a number or a sum like 5+5+10-6'}
+          >
+            {qtyLocked ? (
+              // Excel-cell behaviour, read-only: shows the total; tap to reveal
+              // the sum formula (e.g. "320+150"); tap again for the total.
+              <button
+                type="button"
+                onClick={() => setShowQtyFormula((v) => !v)}
+                className="flex h-12 w-full items-center rounded-xl border border-slate-300 bg-slate-100 px-3.5 text-left font-semibold text-slate-800"
+              >
+                {showQtyFormula ? trackExpr : `${trackTotal.toLocaleString()} m`}
+              </button>
+            ) : (
+              <QuantityInput value={quantity} onChange={setQuantity} placeholder="e.g. 3 or 5+5+10" />
+            )}
+          </Field>
+
+          <Field label="Area" required={areaRequired} hint={areaRequired ? undefined : 'No areas set — optional'}>
+            <Select value={areaId} onChange={(e) => setAreaId(e.target.value)}>
+              <option value="">{areaRequired ? 'Choose area…' : 'No area'}</option>
+              {(areas || []).map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+
+          <Field label="Notes (optional)">
+            <TextArea value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </Field>
+        </Card>
+
+        {amount != null && (
+          <Card className="flex items-center justify-between bg-brand-light p-4">
+            <span className="text-sm text-brand-dark">Total amount</span>
+            <span className="text-xl font-bold text-brand-dark">{formatMoney(amount, currency)}</span>
+          </Card>
+        )}
+
+        {/* End-of-task evidence — kept last, right before Complete */}
         <PhotoCapture
           label="Proof of work"
           required
@@ -394,68 +545,6 @@ export default function CompleteTask() {
           </div>
         </Card>
 
-        <Card className="space-y-4 p-4">
-          <Field label="Machine used" required>
-            <Select
-              value={machineId}
-              onChange={(e) => {
-                setMachineId(e.target.value)
-                setRateId('') // rates depend on the machine
-              }}
-            >
-              <option value="">Choose machine…</option>
-              {(machines || []).map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </Select>
-            {machines && machines.length === 0 && (
-              <p className="mt-1 text-xs text-red-500">No machines assigned to you. Ask your admin.</p>
-            )}
-          </Field>
-
-          <Field label="Piece rate work" hint={machineId ? 'Optional — leave blank if not known yet' : 'Choose a machine first'}>
-            <Select value={rateId} onChange={(e) => setRateId(e.target.value)} disabled={!machineId}>
-              <option value="">{machineId ? 'Choose work type…' : 'Pick a machine first'}</option>
-              {rateOptions.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name} — {formatRate(r.price, currency)}/{r.unit}
-                </option>
-              ))}
-            </Select>
-            {machineId && rates && rates.length === 0 && (
-              <p className="mt-1 text-xs text-red-500">This machine has no piece rates yet. Ask your admin.</p>
-            )}
-          </Field>
-
-          <Field label={`Quantity${rate ? ` (${rate.unit})` : ''}`} hint="Optional — a number or a sum like 5+5+10-6">
-            <QuantityInput value={quantity} onChange={setQuantity} placeholder="e.g. 3 or 5+5+10" />
-          </Field>
-
-          <Field label="Area" required={areaRequired} hint={areaRequired ? undefined : 'No areas set — optional'}>
-            <Select value={areaId} onChange={(e) => setAreaId(e.target.value)}>
-              <option value="">{areaRequired ? 'Choose area…' : 'No area'}</option>
-              {(areas || []).map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-
-          <Field label="Notes (optional)">
-            <TextArea value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </Field>
-        </Card>
-
-        {amount != null && (
-          <Card className="flex items-center justify-between bg-brand-light p-4">
-            <span className="text-sm text-brand-dark">Total amount</span>
-            <span className="text-xl font-bold text-brand-dark">{formatMoney(amount, currency)}</span>
-          </Card>
-        )}
-
         {error && <p className="text-sm text-red-500">{error}</p>}
 
         <Button full type="submit" disabled={busy || !canSave}>
@@ -470,6 +559,20 @@ export default function CompleteTask() {
           Delete unfinished task
         </Button>
       </div>
+
+      {/* Full-screen satellite map recorder (loads Leaflet on demand) */}
+      {mapOpen && (
+        <Suspense fallback={<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 text-white"><Spinner className="h-8 w-8" /></div>}>
+          <DistanceRecorder
+            open={mapOpen}
+            onClose={() => setMapOpen(false)}
+            session={user}
+            taskId={id}
+            pieceRate={rate}
+            onSaved={() => {}}
+          />
+        </Suspense>
+      )}
     </form>
   )
 }

@@ -531,7 +531,9 @@ function OperatorEditor({ editing, companyId, machines, onClose }) {
           <div className="relative">
             <TextInput
               type={showPin ? 'text' : 'password'}
-              inputMode="numeric"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
               value={pin}
               onChange={(e) => setPin(e.target.value)}
               placeholder="••••"

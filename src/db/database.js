@@ -63,6 +63,13 @@ db.version(6).stores({
   monthLocks: 'id, updatedAt, syncStatus'
 })
 
+// v7: GPS distance tracks recorded on the map by operators while finishing a
+// meter-unit piece-rate task. Points are stored inline ([{lat,lng,t}]); a month
+// of an operator's tracks stays viewable/exportable (KML/GPX).
+db.version(7).stores({
+  tracks: 'id, operatorId, taskId, monthKey, updatedAt, syncStatus, [operatorId+monthKey]'
+})
+
 // ---- meta helpers ---------------------------------------------------------
 
 export async function getMeta(key, fallback = null) {

@@ -87,9 +87,12 @@ function OperatorLogin({ onBack, kind }) {
           />
         </Field>
         <Field label="PIN" required error={error}>
+          {/* Full keyboard — PINs may contain letters, not just digits. */}
           <TextInput
             type="password"
-            inputMode="numeric"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
             value={pin}
             onChange={(e) => setPin(e.target.value)}
             placeholder="••••"

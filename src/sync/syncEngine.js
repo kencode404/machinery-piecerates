@@ -27,7 +27,9 @@ import {
   toServerClaim,
   fromServerClaim,
   toServerMonthLock,
-  fromServerMonthLock
+  fromServerMonthLock,
+  toServerTrack,
+  fromServerTrack
 } from './mappers.js'
 
 const EPOCH = '1970-01-01T00:00:00.000Z'
@@ -168,7 +170,7 @@ async function refreshPending() {
   try {
     // Count whole tasks waiting to upload (open or finished) — not photos — so
     // the badge reads "N tasks to sync", one per job.
-    const [pendingTasks, c, m, o, r, a, cl, lk, tomb] = await Promise.all([
+    const [pendingTasks, c, m, o, r, a, cl, lk, tr, tomb] = await Promise.all([
       db.tasks.where('syncStatus').equals(SyncStatus.PENDING).count(),
       db.companies.where('syncStatus').equals(SyncStatus.PENDING).count(),
       db.machines.where('syncStatus').equals(SyncStatus.PENDING).count(),
@@ -177,9 +179,10 @@ async function refreshPending() {
       db.areas.where('syncStatus').equals(SyncStatus.PENDING).count(),
       db.claims.where('syncStatus').equals(SyncStatus.PENDING).count(),
       db.monthLocks.where('syncStatus').equals(SyncStatus.PENDING).count(),
+      db.tracks.where('syncStatus').equals(SyncStatus.PENDING).count(),
       db.tombstones.count()
     ])
-    const other = c + m + o + r + a + cl + lk + tomb // admin setting changes / deletions
+    const other = c + m + o + r + a + cl + lk + tr + tomb // admin setting changes / deletions / tracks
     setState({ pending: pendingTasks + other, pendingTasks })
   } catch {
     /* ignore */
@@ -229,6 +232,8 @@ async function pushPresets() {
   await pushTable(db.areas, 'areas', toServerArea)
   await pushTable(db.claims, 'claims', toServerClaim)
   await pushTable(db.monthLocks, 'month_locks', toServerMonthLock)
+  // GPS map recordings (can be large — jsonb points — but same generic path).
+  await pushTable(db.tracks, 'tracks', toServerTrack)
 }
 
 async function pushTable(table, serverTable, mapper) {
@@ -290,6 +295,7 @@ async function pullPresets() {
   await pullTable('areas', db.areas, fromServerArea)
   await pullTable('claims', db.claims, fromServerClaim)
   await pullTable('month_locks', db.monthLocks, fromServerMonthLock)
+  await pullTable('tracks', db.tracks, fromServerTrack)
 }
 
 async function pullTable(serverTable, dexieTable, mapper) {
