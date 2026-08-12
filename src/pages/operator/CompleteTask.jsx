@@ -451,7 +451,7 @@ export default function CompleteTask() {
               className="flex w-full items-center justify-between rounded-xl border border-brand/40 bg-brand-light/50 px-3 py-3 text-left active:bg-brand-light"
             >
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-brand-dark">Measure distance on map (GPS)</p>
+                <p className="text-sm font-semibold text-brand-dark">Record distance (GPS)</p>
                 <p className="text-xs text-slate-600">
                   {trackTotal > 0
                     ? `Recorded for this task: ${trackTotal.toLocaleString()} m`

@@ -14,6 +14,14 @@ const SAT_ATTRIB = 'Imagery © Esri'
 const FALLBACK_CENTER = [4.2105, 108.9758] // Malaysia-ish, used only before the first GPS fix
 
 const fmtM = (m) => `${(Math.round(m * 10) / 10).toLocaleString()} m`
+/** Elapsed seconds -> "m:ss" (or "h:mm:ss" past an hour). */
+const fmtElapsed = (s) => {
+  const t = Math.max(0, Math.floor(s))
+  const h = Math.floor(t / 3600)
+  const m = Math.floor((t % 3600) / 60)
+  const sec = String(t % 60).padStart(2, '0')
+  return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`
+}
 const dateOnly = (iso) =>
   iso ? new Date(iso).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
 // Always 24-hour (e.g. 14:30) regardless of the phone's own time setting.
@@ -62,6 +70,7 @@ export default function DistanceRecorder({
 
   const [rec, setRec] = useState({ running: false, paused: false, distance: 0, points: [], lastFix: null })
   const [fix, setFix] = useState(null) // warm-up GPS fix while idle (gates Start)
+  const [elapsed, setElapsed] = useState(0) // seconds since recording started
   const centered = useRef(false)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -184,7 +193,6 @@ export default function DistanceRecorder({
     return () => {
       recorder.current?.stop()
       recorder.current = null
-      clearRecordingNotification()
       map.remove()
       mapRef.current = null
       centered.current = false
@@ -221,6 +229,16 @@ export default function DistanceRecorder({
       ro?.disconnect()
     }
   }, [open])
+
+  // Recording timer — ticks every second so the operator can see it's live.
+  useEffect(() => {
+    if (!rec.running) return setElapsed(0)
+    const startedAt = recorder.current?.startedAt ? new Date(recorder.current.startedAt).getTime() : Date.now()
+    const tick = () => setElapsed((Date.now() - startedAt) / 1000)
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [rec.running])
 
   // Errors are transient notices — clear them so they don't sit over the map.
   useEffect(() => {
@@ -487,38 +505,6 @@ export default function DistanceRecorder({
     s.distTarget = distance
   }
 
-  // Persistent "recording" notification: a visible reminder in the phone's
-  // shade while tracking runs (it can NOT keep GPS alive in background — no
-  // web API can — but the wake lock keeps the screen on, and the notification
-  // reminds the operator a session is live if they switch apps).
-  async function showRecordingNotification() {
-    try {
-      if (!('Notification' in window) || !navigator.serviceWorker) return
-      if (Notification.permission === 'default') await Notification.requestPermission()
-      if (Notification.permission !== 'granted') return
-      const reg = await navigator.serviceWorker.ready
-      reg.showNotification('Recording distance…', {
-        tag: 'distance-recording',
-        body: 'GPS tracking is running. Keep the app open — return here to continue.',
-        icon: `${import.meta.env.BASE_URL}pwa-192x192.png`,
-        silent: true,
-        requireInteraction: true
-      })
-    } catch {
-      /* best effort */
-    }
-  }
-
-  async function clearRecordingNotification() {
-    try {
-      const reg = await navigator.serviceWorker?.ready
-      const ns = await reg?.getNotifications({ tag: 'distance-recording' })
-      ns?.forEach((n) => n.close())
-    } catch {
-      /* best effort */
-    }
-  }
-
   async function start() {
     setError('')
     recorder.current = new TrackRecorder({ onUpdate, onError: setError })
@@ -528,7 +514,6 @@ export default function DistanceRecorder({
     // can zoom so the recorded trail stays visible on screen.
     setFollowMode((m) => (m === 0 ? 1 : m))
     mapRef.current?.setMinZoom(15)
-    showRecordingNotification()
   }
 
   // Compass button: recenter+follow → rotate-with-heading → free.
@@ -552,8 +537,6 @@ export default function DistanceRecorder({
     })
   }
 
-  const pause = () => recorder.current?.pause()
-  const resume = () => recorder.current?.resume()
 
   // ---- Admin: delete a path, or draw one by tapping the map --------------
 
@@ -633,7 +616,6 @@ export default function DistanceRecorder({
     if (!r) return
     const result = r.stop()
     recorder.current = null
-    clearRecordingNotification()
     mapRef.current?.setMinZoom(1) // recording over — release the zoom-out cap
     if (!result.points.length || result.distance <= 0) {
       // Nothing measured — just reset, don't save an empty track.
@@ -832,9 +814,17 @@ export default function DistanceRecorder({
             <>
               {/* Updated at 60fps by the glide loop (imperative — avoids re-rendering per frame) */}
               <p ref={distEl} className="text-2xl font-bold leading-tight">0 m</p>
-              <p className="text-[11px] text-white/70">
-                {rec.running ? (rec.paused ? 'Paused' : 'Recording…') : 'This recording'}
-                {' · '}this month {fmtM(monthTotal)}
+              <p className="flex items-center gap-1.5 text-[11px] text-white/70">
+                {rec.running ? (
+                  <>
+                    {/* Blinking red dot + running clock: unmistakably live */}
+                    <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-500" />
+                    <span className="font-semibold text-red-300">REC {fmtElapsed(elapsed)}</span>
+                  </>
+                ) : (
+                  'This recording'
+                )}
+                <span>· this month {fmtM(monthTotal)}</span>
               </p>
               <p className={`text-[11px] font-medium ${accColor}`}>
                 {accNow != null ? `GPS ±${Math.round(accNow)} m` : 'Getting GPS…'}
@@ -1005,16 +995,11 @@ export default function DistanceRecorder({
             )}
           </div>
         ) : (
-          <div className="flex gap-2">
-            {rec.paused ? (
-              <Button type="button" full variant="secondary" onClick={resume}>▶ Resume</Button>
-            ) : (
-              <Button type="button" full variant="secondary" onClick={pause}>⏸ Pause</Button>
-            )}
-            <Button type="button" full onClick={endAndSave} disabled={saving}>
-              {saving ? 'Saving…' : '■ End & save'}
-            </Button>
-          </div>
+          // No pause: stopping and starting again is the same thing, and each
+          // recording adds to the task total.
+          <Button type="button" full onClick={endAndSave} disabled={saving}>
+            {saving ? 'Saving…' : '■ End & save'}
+          </Button>
         )}
       </div>
     </div>
