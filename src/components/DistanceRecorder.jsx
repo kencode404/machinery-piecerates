@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useLiveQuery } from 'dexie-react-hooks'
@@ -12,6 +12,9 @@ import { Button } from './ui.jsx'
 const SAT_TILES = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
 const SAT_ATTRIB = 'Imagery © Esri'
 const FALLBACK_CENTER = [4.2105, 108.9758] // Malaysia-ish, used only before the first GPS fix
+// A diagonal-sized square covers a rectangular viewport at every rotation.
+// Extra pixels prevent sub-pixel/anti-aliasing seams along the clipped edges.
+const ROTATION_SURFACE_PADDING_PX = 16
 
 const fmtM = (m) => `${(Math.round(m * 10) / 10).toLocaleString()} m`
 /** Elapsed seconds -> "m:ss" (or "h:mm:ss" past an hour). */
@@ -59,6 +62,7 @@ export default function DistanceRecorder({
   focus = null, // [lat, lng] to open on when there are no paths/boundary to frame
   drawTarget = null // { taskId, session: {operatorId, operatorName, companyId}, pieceRate, drawnBy }
 }) {
+  const mapViewport = useRef(null) // visible, clipped rectangle
   const mapDiv = useRef(null)
   const mapRef = useRef(null)
   const liveLine = useRef(null) // polyline of the in-progress recording
@@ -210,18 +214,38 @@ export default function DistanceRecorder({
   // Shortest-way easing between two angles (handles the 359°→1° wrap).
   const easeAngle = (cur, target, k) => cur + ((((target - cur + 540) % 360) - 180) * k)
 
-  // Leaflet caches the container size; after a rotation or any resize the tiles
-  // are laid out for the old dimensions and the rest of the view stays blank.
-  // Re-measure on both the window events and an observer on the container.
-  useEffect(() => {
+  // Size the rotating map as a square whose side is the visible viewport's
+  // diagonal. That is the smallest square guaranteed to cover every corner at
+  // every compass angle, without the tile/memory cost of a large fixed percent.
+  // This layout effect runs before Leaflet is created, then re-measures only
+  // when the viewport changes (including phone rotation and dynamic UI resize).
+  useLayoutEffect(() => {
     if (!open) return
-    const refresh = () => mapRef.current?.invalidateSize()
+    const resizeSurface = () => {
+      const viewport = mapViewport.current
+      const wrapper = rotWrap.current
+      if (!viewport || !wrapper) return
+
+      const { width, height } = viewport.getBoundingClientRect()
+      if (!width || !height) return
+
+      const side = Math.ceil(Math.hypot(width, height)) + ROTATION_SURFACE_PADDING_PX
+      const size = `${side}px`
+      if (wrapper.style.width === size && wrapper.style.height === size) return
+
+      wrapper.style.width = size
+      wrapper.style.height = size
+      mapRef.current?.invalidateSize({ pan: false })
+    }
+
+    resizeSurface()
+    const refresh = () => resizeSurface()
     window.addEventListener('resize', refresh)
     window.addEventListener('orientationchange', refresh)
     let ro
-    if (typeof ResizeObserver !== 'undefined' && mapDiv.current) {
-      ro = new ResizeObserver(refresh)
-      ro.observe(mapDiv.current)
+    if (typeof ResizeObserver !== 'undefined' && mapViewport.current) {
+      ro = new ResizeObserver(resizeSurface)
+      ro.observe(mapViewport.current)
     }
     return () => {
       window.removeEventListener('resize', refresh)
@@ -683,12 +707,12 @@ export default function DistanceRecorder({
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black">
-      {/* Map fills the screen. It sits inside an oversized rotating wrapper so
-          heading-up mode can spin it without exposing bare corners. */}
-      <div className="relative min-h-0 flex-1 overflow-hidden">
+      {/* Map fills the screen. Its rotating wrapper is sized to this viewport's
+          diagonal so heading-up mode cannot expose bare corners. */}
+      <div ref={mapViewport} className="relative min-h-0 flex-1 overflow-hidden">
         <div
           ref={rotWrap}
-          className="absolute left-1/2 top-1/2 h-[150%] w-[150%] will-change-transform"
+          className="absolute left-1/2 top-1/2 h-full w-full will-change-transform"
           style={{ transform: 'translate(-50%, -50%) rotate(0deg)' }}
         >
           <div ref={mapDiv} className="h-full w-full" />
