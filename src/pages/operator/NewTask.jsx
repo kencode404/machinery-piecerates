@@ -85,7 +85,14 @@ export default function NewTask() {
       />
 
       <div className="space-y-4">
-        <PhotoCapture language="ms" label="Gambar meter" required value={photo1} onChange={setPhoto1} />
+        <PhotoCapture
+          language="ms"
+          label="Gambar meter"
+          captureLabel="Ambil gambar meter mula"
+          required
+          value={photo1}
+          onChange={setPhoto1}
+        />
         {showPhoto2 || photo2 ? (
           <PhotoCapture
             language="ms"

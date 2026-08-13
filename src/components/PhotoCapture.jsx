@@ -33,7 +33,8 @@ export default function PhotoCapture({
   existingId = null,
   confirmReplace = false,
   previewHeight = 'h-44', // shorter previews keep long forms scrollable
-  language = 'en'
+  language = 'en',
+  captureLabel = null
 }) {
   const ms = language === 'ms'
   const inputRef = useRef(null)
@@ -208,7 +209,7 @@ export default function PhotoCapture({
               className="flex w-full flex-col items-center gap-1 rounded-xl bg-brand py-5 text-white active:bg-brand-dark"
             >
               <IconCamera width={28} height={28} />
-              <span className="text-base font-medium">{ms ? 'Ambil gambar' : 'Take photo'}</span>
+              <span className="text-base font-medium">{captureLabel || (ms ? 'Ambil gambar' : 'Take photo')}</span>
               <span className="text-[11px] text-white/80">{ms ? 'Kamera atau galeri' : 'Camera or upload from phone'}</span>
             </button>
           )}

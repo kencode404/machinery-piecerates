@@ -98,7 +98,7 @@ export function SyncStatus({ language = 'en' }) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-brand-light px-2.5 py-1 text-xs text-brand-dark">
         <IconCloud width={14} height={14} className="animate-pulse" />
-        {ms ? 'Menyegerak…' : 'Syncing…'}
+        {ms ? 'Sedang sync…' : 'Syncing…'}
       </span>
     )
   }
@@ -131,7 +131,7 @@ export function SyncStatus({ language = 'en' }) {
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-1 text-xs text-green-700">
       <IconCloud width={14} height={14} />
-      {ms ? 'Sudah segerak' : 'Synced'}
+      {ms ? 'Sudah sync' : 'Synced'}
     </span>
   )
 }

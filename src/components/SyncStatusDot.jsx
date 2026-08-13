@@ -9,7 +9,7 @@ const MAP = {
 export function SyncStatusDot({ status, language = 'en' }) {
   const s = MAP[status] || MAP[SyncStatus.PENDING]
   const ms = {
-    [SyncStatus.SYNCED]: 'Sudah disegerak',
+    [SyncStatus.SYNCED]: 'Sudah sync',
     [SyncStatus.PENDING]: 'Menunggu segerak',
     [SyncStatus.ERROR]: 'Ralat segerak'
   }
