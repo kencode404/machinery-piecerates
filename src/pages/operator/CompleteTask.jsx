@@ -35,7 +35,7 @@ const geoFor = (loc, fallback) => {
 }
 import { getMeta } from '../../db/database.js'
 import PhotoCapture from '../../components/PhotoCapture.jsx'
-import { PhotoById } from '../../components/PhotoThumb.jsx'
+import { Lightbox, PhotoById } from '../../components/PhotoThumb.jsx'
 import PageHeader from '../../components/PageHeader.jsx'
 import { Button, Card, Field, NumberInput, TextInput, TextArea, Select, Spinner } from '../../components/ui.jsx'
 
@@ -65,6 +65,7 @@ export default function CompleteTask() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [mapOpen, setMapOpen] = useState(false)
+  const [startPhotoZoom, setStartPhotoZoom] = useState(null)
   const submitting = useRef(false)
   const hydrated = useRef(false)
   const rateHydrated = useRef(false)
@@ -382,15 +383,18 @@ export default function CompleteTask() {
 
       {/* Reference: the start photos — small thumbnails, this is just context */}
       <Card className="mb-3 p-2">
-        <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Start of task</p>
+        <div className="mb-1.5 flex items-center justify-between gap-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Start of task</p>
+          <p className="text-[11px] text-slate-500">Tap photo to view</p>
+        </div>
         <div className="flex gap-2">
           <div className="flex-1">
-            <PhotoById id={task.startPhotoId} className="h-20 w-full" />
+            <PhotoById id={task.startPhotoId} className="h-20 w-full" onZoom={setStartPhotoZoom} />
             <p className="mt-0.5 text-center text-[11px] text-slate-500">Meter · {timeOf(task.startTime)}</p>
           </div>
           {task.workPhotoId && (
             <div className="flex-1">
-              <PhotoById id={task.workPhotoId} className="h-20 w-full" />
+              <PhotoById id={task.workPhotoId} className="h-20 w-full" onZoom={setStartPhotoZoom} />
               <p className="mt-0.5 text-center text-[11px] text-slate-500">Photo 2</p>
             </div>
           )}
@@ -582,6 +586,8 @@ export default function CompleteTask() {
           />
         </Suspense>
       )}
+
+      <Lightbox url={startPhotoZoom} onClose={() => setStartPhotoZoom(null)} />
     </form>
   )
 }

@@ -42,7 +42,8 @@ export function PhotoThumb({ photo, className = '', onZoom }) {
     <button
       type="button"
       onClick={onZoom ? () => onZoom(url) : undefined}
-      className={`overflow-hidden rounded-lg bg-slate-100 ${className}`}
+      aria-label={onZoom ? 'View full image' : undefined}
+      className={`overflow-hidden rounded-lg bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 ${className}`}
     >
       <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" />
     </button>
@@ -58,15 +59,28 @@ export function PhotoById({ id, className = '', onZoom }) {
 
 /** Simple fullscreen image viewer. Pass `url` (truthy) to show. */
 export function Lightbox({ url, onClose }) {
+  useEffect(() => {
+    if (!url) return undefined
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [url, onClose])
+
   if (!url) return null
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+      className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center bg-black/90 p-4"
       onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Full-size photo preview"
     >
       <img src={url} alt="" className="max-h-full max-w-full rounded-lg object-contain" />
       <button
-        className="absolute right-4 top-4 rounded-full bg-white/15 px-3 py-1 text-white"
+        type="button"
+        className="absolute right-4 top-4 min-h-11 rounded-full bg-white/15 px-4 py-2 text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
         onClick={onClose}
       >
         Close
