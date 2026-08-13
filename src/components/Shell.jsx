@@ -4,8 +4,8 @@ import { useSync } from '../sync/useSync.js'
 import { IconList, IconChart, IconCog, IconLogout, IconCloud, IconCloudOff, IconReport } from './icons.jsx'
 
 const OPERATOR_NAV = [
-  { to: '/open', label: 'Open', Icon: IconList },
-  { to: '/summary', label: 'Summary', Icon: IconChart }
+  { to: '/open', label: 'Kerja', Icon: IconList },
+  { to: '/summary', label: 'Ringkasan', Icon: IconChart }
 ]
 
 const ADMIN_NAV = [
@@ -45,7 +45,7 @@ function TopBar({ role }) {
     <header className="pt-safe sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur print:hidden">
       <div className="flex h-14 items-center justify-between px-4">
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-slate-800">{user?.name || 'User'}</p>
+          <p className="truncate text-sm font-semibold text-slate-800">{user?.name || (role === 'operator' ? 'Pengguna' : 'User')}</p>
           <p className="truncate text-[11px] uppercase tracking-wide text-slate-500">
             {role === 'admin'
               ? 'Administrator'
@@ -55,14 +55,14 @@ function TopBar({ role }) {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <SyncStatus />
+          <SyncStatus language={role === 'operator' ? 'ms' : 'en'} />
           <button
             onClick={() => {
               logout()
               navigate('/login', { replace: true })
             }}
             className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 active:bg-slate-100"
-            aria-label="Log out"
+            aria-label={role === 'operator' ? 'Log keluar' : 'Log out'}
           >
             <IconLogout width={20} height={20} />
           </button>
@@ -72,14 +72,15 @@ function TopBar({ role }) {
   )
 }
 
-export function SyncStatus() {
+export function SyncStatus({ language = 'en' }) {
   const { enabled, online, syncing, pending, pendingTasks, lastError } = useSync()
-  const tasksLabel = `${pendingTasks} ${pendingTasks === 1 ? 'task' : 'tasks'} to sync`
+  const ms = language === 'ms'
+  const tasksLabel = ms ? `${pendingTasks} kerja belum segerak` : `${pendingTasks} ${pendingTasks === 1 ? 'task' : 'tasks'} to sync`
 
   if (!enabled) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-500">
-        Offline mode
+        {ms ? 'Mod luar talian' : 'Offline mode'}
       </span>
     )
   }
@@ -88,7 +89,7 @@ export function SyncStatus() {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs text-amber-700">
         <IconCloudOff width={14} height={14} />
-        {pendingTasks > 0 ? tasksLabel : 'Offline'}
+        {pendingTasks > 0 ? tasksLabel : ms ? 'Luar talian' : 'Offline'}
       </span>
     )
   }
@@ -97,7 +98,7 @@ export function SyncStatus() {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-brand-light px-2.5 py-1 text-xs text-brand-dark">
         <IconCloud width={14} height={14} className="animate-pulse" />
-        Syncing…
+        {ms ? 'Menyegerak…' : 'Syncing…'}
       </span>
     )
   }
@@ -105,7 +106,7 @@ export function SyncStatus() {
   if (lastError) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-1 text-xs text-red-700">
-        Sync error
+        {ms ? 'Ralat segerak' : 'Sync error'}
       </span>
     )
   }
@@ -122,7 +123,7 @@ export function SyncStatus() {
   if (pending > 0) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs text-amber-700">
-        Saving changes…
+        {ms ? 'Menyimpan…' : 'Saving changes…'}
       </span>
     )
   }
@@ -130,7 +131,7 @@ export function SyncStatus() {
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-1 text-xs text-green-700">
       <IconCloud width={14} height={14} />
-      Synced
+      {ms ? 'Sudah segerak' : 'Synced'}
     </span>
   )
 }

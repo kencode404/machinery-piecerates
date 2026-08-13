@@ -19,9 +19,9 @@ export function daysInMonth(monthKey) {
 }
 
 /** Human label for a month key, e.g. "June 2026". */
-export function monthLabel(monthKey) {
+export function monthLabel(monthKey, locale) {
   const [y, m] = monthKey.split('-').map(Number)
-  return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+  return new Date(y, m - 1, 1).toLocaleDateString(locale, { month: 'long', year: 'numeric' })
 }
 
 /**
@@ -103,17 +103,17 @@ export function timeOf(iso) {
 }
 
 /** Full local date-time, e.g. for detail rows. */
-export function dateTimeOf(iso) {
+export function dateTimeOf(iso, locale) {
   if (!iso) return '—'
-  return new Date(iso).toLocaleString(undefined, {
+  return new Date(iso).toLocaleString(locale, {
     day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit'
   })
 }
 
 /** Full local date-time INCLUDING seconds (timestamps are second-accurate). */
-export function dateTimeSecondsOf(iso) {
+export function dateTimeSecondsOf(iso, locale) {
   if (!iso) return '—'
-  return new Date(iso).toLocaleString(undefined, {
+  return new Date(iso).toLocaleString(locale, {
     day: '2-digit', month: 'short', year: 'numeric',
     hour: 'numeric', minute: '2-digit', second: '2-digit'
   })

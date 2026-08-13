@@ -53,7 +53,7 @@ export default function NewTask() {
     if (submitting.current) return
     setError('')
     if (!canSave) {
-      setError('Add the meter photo and a start time.')
+      setError('Tambah gambar meter dan masa mula.')
       return
     }
     submitting.current = true
@@ -69,7 +69,7 @@ export default function NewTask() {
       })
       navigate('/open')
     } catch (err) {
-      setError(err.message || 'Could not save.')
+      setError('Gagal simpan. Cuba lagi.')
       setBusy(false)
       submitting.current = false
     }
@@ -78,17 +78,18 @@ export default function NewTask() {
   return (
     <form onSubmit={submit} className="pb-4">
       <PageHeader
-        title="Start a task"
-        subtitle="Take the meter photo. Finish it later."
+        title="Mula kerja"
+        subtitle="Ambil gambar meter."
         onBack={() => navigate('/open')}
+        language="ms"
       />
 
       <div className="space-y-4">
-        <PhotoCapture label="Meter photo" required hint="Photo of the hour-meter / mileage" value={photo1} onChange={setPhoto1} />
+        <PhotoCapture language="ms" label="Gambar meter" required value={photo1} onChange={setPhoto1} />
         {showPhoto2 || photo2 ? (
           <PhotoCapture
-            label="Extra photo (optional)"
-            hint="e.g. the machine / site"
+            language="ms"
+            label="Gambar tambahan"
             value={photo2}
             onChange={(p) => {
               setPhoto2(p)
@@ -103,12 +104,12 @@ export default function NewTask() {
             onClick={() => setShowPhoto2(true)}
             className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-slate-300 bg-white py-2.5 text-sm font-medium text-slate-600 active:bg-slate-50"
           >
-            <IconPlus width={16} height={16} /> Add extra photo
+            <IconPlus width={16} height={16} /> Tambah gambar
           </button>
         )}
 
         <Card className="space-y-3 p-4">
-          <Field label="Start time" required hint="Taken from the photo — edit if needed">
+          <Field label="Masa mula" required>
             <TextInput
               type="datetime-local"
               step="1"
@@ -119,25 +120,25 @@ export default function NewTask() {
               }}
             />
           </Field>
-          <Field label="Start location" hint="From the photo — edit if needed (latitude, longitude)">
+          <Field label="Lokasi mula">
             <TextInput
               value={startLoc}
               onChange={(e) => {
                 setLocTouched(true)
                 setStartLoc(e.target.value)
               }}
-              placeholder="e.g. 3.13921, 101.6869"
+              placeholder="cth. 3.13921, 101.6869"
             />
           </Field>
-          <Field label="Notes (optional)">
-            <TextArea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything to remember…" />
+          <Field label="Catatan">
+            <TextArea value={notes} onChange={(e) => setNotes(e.target.value)} />
           </Field>
         </Card>
 
         {error && <p className="text-sm text-red-500">{error}</p>}
 
         <Button full type="submit" disabled={busy || !canSave}>
-          {busy ? 'Saving…' : 'Save & leave open'}
+          {busy ? 'Menyimpan…' : 'Simpan'}
         </Button>
       </div>
     </form>

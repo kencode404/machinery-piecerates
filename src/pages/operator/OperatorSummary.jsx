@@ -44,16 +44,16 @@ export default function OperatorSummary() {
     <div className="pb-4">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-lg font-bold text-slate-800">Salary claim</h1>
+          <h1 className="text-lg font-bold text-slate-800">Tuntutan gaji</h1>
           <p className="truncate text-xs text-slate-500">{user.operatorName}</p>
         </div>
         <Button
           type="button"
           variant="secondary"
           onClick={() => setMapOpen(true)}
-          aria-label={`View ${monthLabel(monthKey)} recorded tracks on map`}
+          aria-label={`Lihat trek ${monthLabel(monthKey, 'ms-MY')}`}
         >
-          <IconPin width={18} height={18} /> Map
+          <IconPin width={18} height={18} /> Peta
         </Button>
       </div>
       <MonthSummary
@@ -62,6 +62,7 @@ export default function OperatorSummary() {
         onMonthChange={setMonthKey}
         currency={currency}
         onOpenClick={(t) => navigate(`/open/${t.id}`)}
+        language="ms"
       />
 
       {mapOpen && (
@@ -78,8 +79,9 @@ export default function OperatorSummary() {
             readOnly
             tracks={tracks || []}
             boundary={company?.boundary || null}
-            title={`${monthLabel(monthKey)} · ${(tracks || []).length} recording${(tracks || []).length === 1 ? '' : 's'}`}
+            title={`${monthLabel(monthKey, 'ms-MY')} · ${(tracks || []).length} rekod`}
             focus={mapFocus}
+            language="ms"
           />
         </Suspense>
       )}

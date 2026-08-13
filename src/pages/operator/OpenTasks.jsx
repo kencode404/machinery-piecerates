@@ -15,30 +15,30 @@ export default function OpenTasks() {
 
   return (
     <div className="space-y-3 pb-4">
-      <h1 className="text-lg font-bold text-slate-800">Open tasks</h1>
+      <h1 className="text-lg font-bold text-slate-800">Kerja aktif</h1>
 
       <Button full onClick={() => navigate('/open/new')}>
-        <IconPlus width={18} height={18} /> Start a task
+        <IconPlus width={18} height={18} /> Mula kerja
       </Button>
 
       {tasks && tasks.length === 0 && (
         <EmptyState
-          title="No open tasks"
-          subtitle="Start a task and it will wait here until you add the end photo."
+          title="Tiada kerja aktif"
+          subtitle="Tekan Mula kerja."
         />
       )}
 
       {(tasks || []).map((t) => (
         <button key={t.id} onClick={() => navigate(`/open/${t.id}`)} className="block w-full text-left">
           <Card className="flex items-center gap-3 p-3 active:bg-slate-50">
-            <PhotoById id={t.workPhotoId || t.startPhotoId} className="h-16 w-16 shrink-0" />
+            <PhotoById id={t.workPhotoId || t.startPhotoId} className="h-16 w-16 shrink-0" language="ms" />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <Badge color="amber">In progress</Badge>
-                <SyncStatusDot status={t.syncStatus} />
+                <Badge color="amber">Belum siap</Badge>
+                <SyncStatusDot status={t.syncStatus} language="ms" />
               </div>
-              <p className="mt-1 truncate text-sm font-medium text-slate-700">Started {dateTimeOf(t.startTime)}</p>
-              <p className="truncate text-xs text-slate-500">Tap to add the end photo &amp; finish</p>
+              <p className="mt-1 truncate text-sm font-medium text-slate-700">Mula {dateTimeOf(t.startTime, 'ms-MY')}</p>
+              <p className="truncate text-xs text-slate-500">Tekan untuk siap</p>
             </div>
             <IconChevron width={20} height={20} className="text-slate-300" />
           </Card>

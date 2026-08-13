@@ -28,13 +28,14 @@ export function usePhotoUrl(photo) {
   return url
 }
 
-export function PhotoThumb({ photo, className = '', onZoom }) {
+export function PhotoThumb({ photo, className = '', onZoom, language = 'en' }) {
+  const ms = language === 'ms'
   const url = usePhotoUrl(photo)
   if (!photo) return null
   if (!url) {
     return (
       <div className={`flex items-center justify-center rounded-lg bg-slate-100 text-[10px] text-slate-500 ${className}`}>
-        No image
+        {ms ? 'Tiada gambar' : 'No image'}
       </div>
     )
   }
@@ -42,7 +43,7 @@ export function PhotoThumb({ photo, className = '', onZoom }) {
     <button
       type="button"
       onClick={onZoom ? () => onZoom(url) : undefined}
-      aria-label={onZoom ? 'View full image' : undefined}
+      aria-label={onZoom ? (ms ? 'Lihat gambar' : 'View full image') : undefined}
       className={`overflow-hidden rounded-lg bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 ${className}`}
     >
       <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" />
@@ -51,14 +52,15 @@ export function PhotoThumb({ photo, className = '', onZoom }) {
 }
 
 /** Thumbnail that loads a photo by id from IndexedDB. */
-export function PhotoById({ id, className = '', onZoom }) {
+export function PhotoById({ id, className = '', onZoom, language = 'en' }) {
   const photo = useLiveQuery(() => (id ? getPhoto(id) : undefined), [id])
   if (!id) return null
-  return <PhotoThumb photo={photo} className={className} onZoom={onZoom} />
+  return <PhotoThumb photo={photo} className={className} onZoom={onZoom} language={language} />
 }
 
 /** Simple fullscreen image viewer. Pass `url` (truthy) to show. */
-export function Lightbox({ url, onClose }) {
+export function Lightbox({ url, onClose, language = 'en' }) {
+  const ms = language === 'ms'
   useEffect(() => {
     if (!url) return undefined
     const closeOnEscape = (event) => {
@@ -75,7 +77,7 @@ export function Lightbox({ url, onClose }) {
       onClick={onClose}
       role="dialog"
       aria-modal="true"
-      aria-label="Full-size photo preview"
+      aria-label={ms ? 'Paparan gambar' : 'Full-size photo preview'}
     >
       <img src={url} alt="" className="max-h-full max-w-full rounded-lg object-contain" />
       <button
@@ -83,7 +85,7 @@ export function Lightbox({ url, onClose }) {
         className="absolute right-4 top-4 min-h-11 rounded-full bg-white/15 px-4 py-2 text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
         onClick={onClose}
       >
-        Close
+        {ms ? 'Tutup' : 'Close'}
       </button>
     </div>
   )

@@ -25,11 +25,11 @@ const fmtElapsed = (s) => {
   const sec = String(t % 60).padStart(2, '0')
   return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`
 }
-const dateOnly = (iso) =>
-  iso ? new Date(iso).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
+const dateOnly = (iso, locale) =>
+  iso ? new Date(iso).toLocaleDateString(locale, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
 // Always 24-hour (e.g. 14:30) regardless of the phone's own time setting.
-const timeOnly = (iso) =>
-  iso ? new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false }) : '—'
+const timeOnly = (iso, locale) =>
+  iso ? new Date(iso).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false }) : '—'
 
 /**
  * Full-screen satellite-map overlay where an operator records the distance
@@ -61,8 +61,10 @@ export default function DistanceRecorder({
   canEditRecorded = false, // HQ admin may also reshape a GPS recording
   editedBy = null, // role stamped on a reshaped recording (monthly map has no drawTarget)
   focus = null, // [lat, lng] to open on when there are no paths/boundary to frame
-  drawTarget = null // { taskId, session: {operatorId, operatorName, companyId}, pieceRate, drawnBy }
+  drawTarget = null, // { taskId, session: {operatorId, operatorName, companyId}, pieceRate, drawnBy }
+  language = 'en'
 }) {
+  const ms = language === 'ms'
   const mapViewport = useRef(null) // visible, clipped rectangle
   const mapDiv = useRef(null)
   const mapRef = useRef(null)
@@ -365,10 +367,10 @@ export default function DistanceRecorder({
       .query({ name: 'geolocation' })
       .then((st) => {
         if (st.state === 'denied')
-          setError('Location is blocked for this site. Tap the lock icon next to the address → Permissions → Location → Allow, then reload.')
+          setError(ms ? 'Lokasi disekat. Benarkan lokasi dalam tetapan pelayar.' : 'Location is blocked for this site. Tap the lock icon next to the address → Permissions → Location → Allow, then reload.')
       })
       .catch(() => {})
-  }, [open])
+  }, [open, readOnly, ms])
 
   // Warm up the GPS from the moment the map opens: a live watch that moves the
   // blue dot, centers the map on the first fix, and reports accuracy so Start
@@ -389,12 +391,12 @@ export default function DistanceRecorder({
       },
       (err) => {
         if (err.code === 1)
-          setError('Location is blocked for this site. Tap the lock icon next to the address → Permissions → Location → Allow, then reload.')
+          setError(ms ? 'Lokasi disekat. Benarkan lokasi dalam tetapan pelayar.' : 'Location is blocked for this site. Tap the lock icon next to the address → Permissions → Location → Allow, then reload.')
       },
       { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
     )
     return () => navigator.geolocation.clearWatch(wid)
-  }, [open, rec.running])
+  }, [open, readOnly, rec.running, ms])
 
   // Mirror the drawn points onto the map line, and rebuild the edit handles:
   // a solid dot per vertex (drag to move, tap to delete) and a hollow dot at
@@ -544,7 +546,13 @@ export default function DistanceRecorder({
 
   async function start() {
     setError('')
-    recorder.current = new TrackRecorder({ onUpdate, onError: setError })
+    const onRecorderError = (message) => {
+      if (!ms) return setError(message)
+      if (/not available/i.test(message)) return setError('GPS tidak tersedia.')
+      if (/blocked/i.test(message)) return setError('Lokasi disekat. Benarkan lokasi dalam tetapan pelayar.')
+      setError('Isyarat GPS hilang. Cuba di kawasan terbuka.')
+    }
+    recorder.current = new TrackRecorder({ onUpdate, onError: onRecorderError })
     await recorder.current.start()
     setRec((r) => ({ ...r, running: true, paused: false }))
     // While recording: always follow the dot, and cap how far out the operator
@@ -658,7 +666,7 @@ export default function DistanceRecorder({
       // Nothing measured — just reset, don't save an empty track.
       setRec({ running: false, paused: false, distance: 0, points: [] })
       resetSmooth()
-      setError(result.points.length ? '' : 'No movement recorded — nothing to save.')
+      setError(result.points.length ? '' : ms ? 'Tiada pergerakan direkod.' : 'No movement recorded — nothing to save.')
       return
     }
     setSaving(true)
@@ -676,7 +684,7 @@ export default function DistanceRecorder({
       setRec({ running: false, paused: false, distance: 0, points: [] })
       onSaved?.() // parent re-reads the task total and locks the quantity
     } catch (err) {
-      setError(err.message || 'Could not save the recording.')
+      setError(ms ? 'Gagal simpan rekod.' : err.message || 'Could not save the recording.')
     } finally {
       setSaving(false)
     }
@@ -744,15 +752,15 @@ export default function DistanceRecorder({
           >
             <p className="text-base font-bold text-slate-800">
               {exportTarget !== 'month'
-                ? 'Export this track'
+                ? ms ? 'Eksport trek' : 'Export this track'
                 : readOnly
-                  ? title || 'Export paths'
-                  : `Export ${monthLabel(monthKey)}`}
+                  ? title || (ms ? 'Eksport laluan' : 'Export paths')
+                  : `${ms ? 'Eksport' : 'Export'} ${monthLabel(monthKey, ms ? 'ms-MY' : undefined)}`}
             </p>
             <p className="mt-1 text-sm text-slate-600">
-              {exportList.length} track{exportList.length === 1 ? '' : 's'} · {fmtM(exportMeters)}
+              {exportList.length} {ms ? 'trek' : `track${exportList.length === 1 ? '' : 's'}`} · {fmtM(exportMeters)}
             </p>
-            <p className="mt-1 text-xs text-slate-500">The file contains the path only. Choose a format:</p>
+            <p className="mt-1 text-xs text-slate-500">{ms ? 'Pilih format:' : 'The file contains the path only. Choose a format:'}</p>
             <div className="mt-4 flex gap-2">
               <Button type="button" full onClick={() => runExport('kml')}>
                 KML
@@ -766,10 +774,10 @@ export default function DistanceRecorder({
                 no such option, so point people there. */}
             <div className="mt-1.5 flex gap-2 text-center text-[10px] leading-tight text-slate-500">
               <span className="flex-1">Google Earth</span>
-              <span className="flex-1">GPS apps / GIS</span>
+              <span className="flex-1">{ms ? 'Aplikasi GPS / GIS' : 'GPS apps / GIS'}</span>
             </div>
             <Button type="button" full variant="ghost" className="mt-2" onClick={() => setExportTarget(null)}>
-              Cancel
+              {ms ? 'Batal' : 'Cancel'}
             </Button>
           </div>
         </div>
@@ -785,7 +793,9 @@ export default function DistanceRecorder({
           role="status"
           className="absolute left-2 top-7 z-[1000] max-w-[70%] rounded-lg bg-amber-950/85 px-2.5 py-1.5 text-xs font-medium leading-tight text-amber-50 shadow"
         >
-          Offline · {boundary ? 'boundary saved' : 'saved tracks available'} · cached imagery only
+          {ms
+            ? `Luar talian · ${boundary ? 'sempadan tersedia' : 'trek tersedia'} · imej tersimpan sahaja`
+            : `Offline · ${boundary ? 'boundary saved' : 'saved tracks available'} · cached imagery only`}
         </p>
       )}
 
@@ -809,7 +819,13 @@ export default function DistanceRecorder({
         type="button"
         onClick={cycleFollowMode}
         className="absolute bottom-24 right-3 z-[1000] flex h-12 w-12 items-center justify-center rounded-full bg-white text-slate-700 shadow-lg active:bg-slate-100"
-        aria-label={followMode === 0 ? 'Follow my position' : followMode === 1 ? 'Rotate with facing direction' : 'Free map'}
+        aria-label={
+          followMode === 0
+            ? ms ? 'Ikut kedudukan' : 'Follow my position'
+            : followMode === 1
+              ? ms ? 'Putar ikut arah' : 'Rotate with facing direction'
+              : ms ? 'Peta bebas' : 'Free map'
+        }
       >
         {followMode === 2 ? (
           /* heading-up: compass needle */
@@ -853,7 +869,7 @@ export default function DistanceRecorder({
               <p className="text-[11px] text-white/70">
                 {drawing
                   ? `${editingId ? 'Editing' : 'Drawing'} · this path ${fmtM(drawDistance)}`
-                  : title || `${(monthTracks || []).length} recording${(monthTracks || []).length === 1 ? '' : 's'}`}
+                  : title || `${(monthTracks || []).length} ${ms ? 'rekod' : `recording${(monthTracks || []).length === 1 ? '' : 's'}`}`}
               </p>
             </>
           ) : (
@@ -861,12 +877,12 @@ export default function DistanceRecorder({
               {/* Updated at 60fps by the glide loop (imperative — avoids re-rendering per frame) */}
               <p ref={distEl} className="text-2xl font-bold leading-tight">0 m</p>
               <p className="text-[11px] text-white/70">
-                {rec.running ? 'Recording…' : 'This recording'}
-                {' · '}this month {fmtM(monthTotal)}
+                {rec.running ? (ms ? 'Merekod…' : 'Recording…') : (ms ? 'Rekod ini' : 'This recording')}
+                {' · '}{ms ? 'bulan ini' : 'this month'} {fmtM(monthTotal)}
               </p>
               <p className={`text-[11px] font-medium ${accColor}`}>
-                {accNow != null ? `GPS ±${Math.round(accNow)} m` : 'Getting GPS…'}
-                {rec.running && accNow != null && accNow > MAX_ACCURACY_M ? ' — weak signal, count on hold' : ''}
+                {accNow != null ? `GPS ±${Math.round(accNow)} m` : ms ? 'Mencari GPS…' : 'Getting GPS…'}
+                {rec.running && accNow != null && accNow > MAX_ACCURACY_M ? (ms ? ' · isyarat lemah' : ' — weak signal, count on hold') : ''}
               </p>
             </>
           )}
@@ -876,7 +892,7 @@ export default function DistanceRecorder({
           onClick={onClose}
           disabled={rec.running}
           className="flex h-11 w-11 items-center justify-center rounded-full bg-black/70 text-xl text-white shadow disabled:opacity-40"
-          aria-label="Close map"
+          aria-label={ms ? 'Tutup peta' : 'Close map'}
         >
           ×
         </button>
@@ -897,22 +913,22 @@ export default function DistanceRecorder({
                 type="button"
                 onClick={() => setSelected(null)}
                 className="absolute right-1.5 top-0.5 p-1 text-lg leading-none text-white/60 active:text-white"
-                aria-label="Close details"
+                aria-label={ms ? 'Tutup butiran' : 'Close details'}
               >
                 ×
               </button>
               {/* Job + distance share the top row; the date/time gets the full
                   panel width below so AM/PM is never cut off on a phone. */}
               <div className="flex items-center gap-2 pr-5">
-                <p className="min-w-0 flex-1 truncate text-sm font-semibold">{selected.pieceRateName || 'Work'}</p>
+                <p className="min-w-0 flex-1 truncate text-sm font-semibold">{selected.pieceRateName || (ms ? 'Kerja' : 'Work')}</p>
                 <span className="shrink-0 whitespace-nowrap text-base font-bold text-amber-300">
                   {fmtM(selected.distanceMeters)}
                 </span>
               </div>
               <div className="flex items-center justify-between gap-2">
                 <p className="whitespace-nowrap text-[11px] text-white/70">
-                  {dateOnly(selected.endedAt || selected.startedAt)} · time:{' '}
-                  {timeOnly(selected.endedAt || selected.startedAt)}
+                  {dateOnly(selected.endedAt || selected.startedAt, ms ? 'ms-MY' : undefined)} · {ms ? 'masa' : 'time'}:{' '}
+                  {timeOnly(selected.endedAt || selected.startedAt, ms ? 'ms-MY' : undefined)}
                 </p>
                 <div className="flex shrink-0 gap-1.5">
                   <button
@@ -920,7 +936,7 @@ export default function DistanceRecorder({
                     onClick={() => setExportTarget((v) => (v === selected ? null : selected))}
                     className="rounded-md bg-white/15 px-2 py-1 text-[11px] font-medium text-white active:bg-white/25"
                   >
-                    Export
+                    {ms ? 'Eksport' : 'Export'}
                   </button>
                   {/* Drawn paths: site + HQ admin. GPS recordings: HQ admin only. */}
                   {(selected.manual ? canDraw : canEditRecorded) && (
@@ -967,7 +983,7 @@ export default function DistanceRecorder({
                 aria-hidden
                 tabIndex={-1}
               >
-                Monthly export
+                {ms ? 'Eksport bulan' : 'Monthly export'}
               </Button>
             )}
           </div>
@@ -1006,7 +1022,7 @@ export default function DistanceRecorder({
             // Admin: inspect + export (drawing starts from the pen icon).
             hasExport && (
               <Button type="button" full variant="secondary" onClick={() => setExportTarget('month')}>
-                Export
+                {ms ? 'Eksport' : 'Export'}
               </Button>
             )
           )
@@ -1014,12 +1030,12 @@ export default function DistanceRecorder({
           <div className="flex gap-2">
             <Button type="button" full onClick={start} disabled={saving || !gpsReady}>
               {saving
-                ? 'Saving…'
+                ? ms ? 'Menyimpan…' : 'Saving…'
                 : gpsReady
-                  ? '● Start recording'
+                  ? ms ? '● Mula rekod' : '● Start recording'
                   : fix?.accuracy != null
-                    ? `Waiting for GPS… ±${Math.round(fix.accuracy)} m`
-                    : 'Waiting for GPS…'}
+                    ? `${ms ? 'Menunggu GPS' : 'Waiting for GPS'}… ±${Math.round(fix.accuracy)} m`
+                    : ms ? 'Menunggu GPS…' : 'Waiting for GPS…'}
             </Button>
             {hasExport && (
               <Button
@@ -1028,7 +1044,7 @@ export default function DistanceRecorder({
                 className="whitespace-nowrap px-3 text-sm"
                 onClick={() => setExportTarget((v) => (v === 'month' ? null : 'month'))}
               >
-                Monthly export
+                {ms ? 'Eksport bulan' : 'Monthly export'}
               </Button>
             )}
           </div>
@@ -1042,7 +1058,7 @@ export default function DistanceRecorder({
               <span className="font-semibold text-red-300">REC {fmtElapsed(elapsed)}</span>
             </p>
             <Button type="button" full onClick={endAndSave} disabled={saving}>
-              {saving ? 'Saving…' : '■ End & save'}
+              {saving ? (ms ? 'Menyimpan…' : 'Saving…') : (ms ? '■ Tamat & simpan' : '■ End & save')}
             </Button>
           </>
         )}

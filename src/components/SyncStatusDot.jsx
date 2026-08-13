@@ -6,7 +6,13 @@ const MAP = {
   [SyncStatus.ERROR]: { c: 'bg-red-400', t: 'Sync error' }
 }
 
-export function SyncStatusDot({ status }) {
+export function SyncStatusDot({ status, language = 'en' }) {
   const s = MAP[status] || MAP[SyncStatus.PENDING]
-  return <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${s.c}`} title={s.t} aria-label={s.t} />
+  const ms = {
+    [SyncStatus.SYNCED]: 'Sudah disegerak',
+    [SyncStatus.PENDING]: 'Menunggu segerak',
+    [SyncStatus.ERROR]: 'Ralat segerak'
+  }
+  const label = language === 'ms' ? ms[status] || ms[SyncStatus.PENDING] : s.t
+  return <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${s.c}`} title={label} aria-label={label} />
 }

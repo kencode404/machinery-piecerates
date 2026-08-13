@@ -37,7 +37,7 @@ import { getMeta } from '../../db/database.js'
 import PhotoCapture from '../../components/PhotoCapture.jsx'
 import { Lightbox, PhotoById } from '../../components/PhotoThumb.jsx'
 import PageHeader from '../../components/PageHeader.jsx'
-import { Button, Card, Field, NumberInput, TextInput, TextArea, Select, Spinner } from '../../components/ui.jsx'
+import { Button, Card, Field, TextInput, TextArea, Select, Spinner } from '../../components/ui.jsx'
 
 export default function CompleteTask() {
   const { id } = useParams()
@@ -288,9 +288,9 @@ export default function CompleteTask() {
   if (!task || task.status === TaskStatus.COMPLETED) {
     return (
       <div className="py-10 text-center text-slate-500">
-        <p>This task is not open.</p>
+        <p>Kerja ini sudah ditutup.</p>
         <Button className="mt-4" onClick={() => navigate('/open')}>
-          Back to open tasks
+          Kembali
         </Button>
       </div>
     )
@@ -308,17 +308,17 @@ export default function CompleteTask() {
     if (!canSave) {
       setError(
         areaRequired
-          ? 'Add both end photos (proof of work + ending meter), end time, machine and area.'
-          : 'Add both end photos (proof of work + ending meter), end time and machine.'
+          ? 'Lengkapkan gambar, masa tamat, mesin dan kawasan.'
+          : 'Lengkapkan gambar, masa tamat dan mesin.'
       )
       return
     }
     if (durationMins == null) {
-      setError('The end time is before the start time. Adjust the end time.')
+      setError('Masa tamat lebih awal daripada masa mula.')
       return
     }
     if (quantity.trim() !== '' && qtyNum == null) {
-      setError('Quantity must be a number or a sum like 5+5+10-6.')
+      setError('Kuantiti mesti nombor atau jumlah seperti 5+5+10-6.')
       return
     }
     submitting.current = true
@@ -346,7 +346,7 @@ export default function CompleteTask() {
       })
       navigate('/summary')
     } catch (err) {
-      setError(err.message || 'Could not save.')
+      setError('Gagal simpan. Cuba lagi.')
       setBusy(false)
       submitting.current = false
       finalizing.current = false // completion failed — let auto-save resume
@@ -356,7 +356,7 @@ export default function CompleteTask() {
   // Operators can discard a hanging task they no longer need to finish.
   async function remove() {
     if (busy) return
-    if (!window.confirm('Delete this unfinished task? This cannot be undone.')) return
+    if (!window.confirm('Padam kerja ini? Tindakan ini kekal.')) return
     finalizing.current = true // stop auto-save from re-creating what we delete
     setError('')
     setBusy(true)
@@ -364,7 +364,7 @@ export default function CompleteTask() {
       await deleteTask(id)
       navigate('/open')
     } catch (err) {
-      setError(err.message || 'Could not delete.')
+      setError('Gagal padam. Cuba lagi.')
       setBusy(false)
       finalizing.current = false
     }
@@ -379,23 +379,28 @@ export default function CompleteTask() {
 
   return (
     <form onSubmit={submit} className="pb-4">
-      <PageHeader title="Finish task" subtitle={`Started ${dateTimeOf(task.startTime)}`} onBack={goBack} />
+      <PageHeader
+        title="Siapkan kerja"
+        subtitle={`Mula ${dateTimeOf(task.startTime, 'ms-MY')}`}
+        onBack={goBack}
+        language="ms"
+      />
 
       {/* Reference: the start photos — small thumbnails, this is just context */}
       <Card className="mb-3 p-2">
         <div className="mb-1.5 flex items-center justify-between gap-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Start of task</p>
-          <p className="text-[11px] text-slate-500">Tap photo to view</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mula kerja</p>
+          <p className="text-[11px] text-slate-500">Tekan gambar</p>
         </div>
         <div className="flex gap-2">
           <div className="flex-1">
-            <PhotoById id={task.startPhotoId} className="h-20 w-full" onZoom={setStartPhotoZoom} />
+            <PhotoById id={task.startPhotoId} className="h-20 w-full" onZoom={setStartPhotoZoom} language="ms" />
             <p className="mt-0.5 text-center text-[11px] text-slate-500">Meter · {timeOf(task.startTime)}</p>
           </div>
           {task.workPhotoId && (
             <div className="flex-1">
-              <PhotoById id={task.workPhotoId} className="h-20 w-full" onZoom={setStartPhotoZoom} />
-              <p className="mt-0.5 text-center text-[11px] text-slate-500">Photo 2</p>
+              <PhotoById id={task.workPhotoId} className="h-20 w-full" onZoom={setStartPhotoZoom} language="ms" />
+              <p className="mt-0.5 text-center text-[11px] text-slate-500">Gambar 2</p>
             </div>
           )}
         </div>
@@ -403,7 +408,7 @@ export default function CompleteTask() {
 
       <div className="space-y-4">
         <Card className="space-y-4 p-4">
-          <Field label="Machine used" required>
+          <Field label="Mesin" required>
             <Select
               value={machineId}
               onChange={(e) => {
@@ -411,7 +416,7 @@ export default function CompleteTask() {
                 setRateId('') // rates depend on the machine
               }}
             >
-              <option value="">Choose machine…</option>
+              <option value="">Pilih mesin…</option>
               {(machines || []).map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name}
@@ -419,13 +424,13 @@ export default function CompleteTask() {
               ))}
             </Select>
             {machines && machines.length === 0 && (
-              <p className="mt-1 text-xs text-red-500">No machines assigned to you. Ask your admin.</p>
+              <p className="mt-1 text-xs text-red-500">Tiada mesin. Hubungi admin.</p>
             )}
           </Field>
 
-          <Field label="Piece rate work" hint={machineId ? 'Optional — leave blank if not known yet' : 'Choose a machine first'}>
+          <Field label="Jenis kerja" hint={machineId ? 'Pilihan' : 'Pilih mesin dahulu'}>
             <Select value={rateId} onChange={(e) => setRateId(e.target.value)} disabled={!machineId}>
-              <option value="">{machineId ? 'Choose work type…' : 'Pick a machine first'}</option>
+              <option value="">{machineId ? 'Pilih jenis kerja…' : 'Pilih mesin dahulu'}</option>
               {rateOptions.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.name} — {formatRate(r.price, currency)}/{r.unit}
@@ -433,7 +438,7 @@ export default function CompleteTask() {
               ))}
             </Select>
             {machineId && rates && rates.length === 0 && (
-              <p className="mt-1 text-xs text-red-500">This machine has no piece rates yet. Ask your admin.</p>
+              <p className="mt-1 text-xs text-red-500">Tiada kadar. Hubungi admin.</p>
             )}
           </Field>
 
@@ -455,20 +460,20 @@ export default function CompleteTask() {
               className="flex w-full items-center justify-between rounded-xl border border-brand/40 bg-brand-light/50 px-3 py-3 text-left active:bg-brand-light"
             >
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-brand-dark">Record distance (GPS)</p>
+                <p className="text-sm font-semibold text-brand-dark">Rekod jarak (GPS)</p>
                 <p className="text-xs text-slate-600">
                   {trackTotal > 0
-                    ? `Recorded for this task: ${trackTotal.toLocaleString()} m`
-                    : 'Optional — record the distance on the satellite map'}
+                    ? `Direkod: ${trackTotal.toLocaleString()} m`
+                    : 'Pilihan · guna peta satelit'}
                 </p>
               </div>
-              <span className="shrink-0 rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white">Open map</span>
+              <span className="shrink-0 rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white">Buka</span>
             </button>
           )}
 
           <Field
-            label={`Quantity${rate ? ` (${rate.unit})` : ''}`}
-            hint={qtyLocked ? 'Measured on the map — tap to see the sum' : 'Optional — a number or a sum like 5+5+10-6'}
+            label={`Kuantiti${rate ? ` (${rate.unit})` : ''}`}
+            hint={qtyLocked ? 'Daripada peta · tekan untuk jumlah' : 'Pilihan · contoh 5+5+10'}
           >
             {qtyLocked ? (
               // Excel-cell behaviour, read-only: shows the total; tap to reveal
@@ -481,13 +486,13 @@ export default function CompleteTask() {
                 {showQtyFormula ? trackExpr : `${trackTotal.toLocaleString()} m`}
               </button>
             ) : (
-              <QuantityInput value={quantity} onChange={setQuantity} placeholder="e.g. 3 or 5+5+10" />
+              <QuantityInput value={quantity} onChange={setQuantity} placeholder="cth. 3 atau 5+5+10" />
             )}
           </Field>
 
-          <Field label="Area" required={areaRequired} hint={areaRequired ? undefined : 'No areas set — optional'}>
+          <Field label="Kawasan" required={areaRequired} hint={areaRequired ? undefined : 'Pilihan'}>
             <Select value={areaId} onChange={(e) => setAreaId(e.target.value)}>
-              <option value="">{areaRequired ? 'Choose area…' : 'No area'}</option>
+              <option value="">{areaRequired ? 'Pilih kawasan…' : 'Tiada kawasan'}</option>
               {(areas || []).map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.name}
@@ -496,39 +501,39 @@ export default function CompleteTask() {
             </Select>
           </Field>
 
-          <Field label="Notes (optional)">
+          <Field label="Catatan">
             <TextArea value={notes} onChange={(e) => setNotes(e.target.value)} />
           </Field>
         </Card>
 
         {amount != null && (
           <Card className="flex items-center justify-between bg-brand-light p-4">
-            <span className="text-sm text-brand-dark">Total amount</span>
+            <span className="text-sm text-brand-dark">Jumlah</span>
             <span className="text-xl font-bold text-brand-dark">{formatMoney(amount, currency)}</span>
           </Card>
         )}
 
         {/* End-of-task evidence — kept last, right before Complete */}
         <PhotoCapture
-          label="Proof of work"
+          language="ms"
+          label="Bukti kerja"
           required
-          hint="Photo showing the finished work"
           value={endWorkPhoto}
           onChange={onEndWorkPhoto}
           detectTime={false}
           previewHeight="h-28"
         />
         <PhotoCapture
-          label="Ending meter photo"
+          language="ms"
+          label="Gambar meter akhir"
           required
-          hint="Photo of the hour-meter / mileage"
           value={endPhoto}
           onChange={onEndPhoto}
           previewHeight="h-28"
         />
 
         <Card className="space-y-4 p-4">
-          <Field label="End time" required hint="Taken from the photo — edit if needed">
+          <Field label="Masa tamat" required>
             <TextInput
               type="datetime-local"
               step="1"
@@ -539,18 +544,18 @@ export default function CompleteTask() {
               }}
             />
           </Field>
-          <Field label="End location" hint="From the photo — edit if needed (latitude, longitude)">
+          <Field label="Lokasi tamat">
             <TextInput
               value={endLoc}
               onChange={(e) => {
                 setLocTouched(true)
                 setEndLoc(e.target.value)
               }}
-              placeholder="e.g. 3.13921, 101.6869"
+              placeholder="cth. 3.13921, 101.6869"
             />
           </Field>
           <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
-            <span className="text-sm text-slate-500">Duration (auto)</span>
+            <span className="text-sm text-slate-500">Tempoh</span>
             <span className="text-lg font-bold text-slate-800">
               {formatHours(durationMins)}
             </span>
@@ -560,15 +565,15 @@ export default function CompleteTask() {
         {error && <p className="text-sm text-red-500">{error}</p>}
 
         <Button full type="submit" disabled={busy || !canSave}>
-          {busy ? 'Saving…' : 'Complete task'}
+          {busy ? 'Menyimpan…' : 'Siap kerja'}
         </Button>
 
         <p className="text-center text-xs text-slate-500">
-          Progress saves automatically — you can leave and finish this task later.
+          Disimpan automatik.
         </p>
 
         <Button full type="button" variant="danger" disabled={busy} onClick={remove}>
-          Delete unfinished task
+          Padam kerja
         </Button>
       </div>
 
@@ -583,11 +588,12 @@ export default function CompleteTask() {
             pieceRate={rate}
             boundary={company?.boundary || null}
             onSaved={() => {}}
+            language="ms"
           />
         </Suspense>
       )}
 
-      <Lightbox url={startPhotoZoom} onClose={() => setStartPhotoZoom(null)} />
+      <Lightbox url={startPhotoZoom} onClose={() => setStartPhotoZoom(null)} language="ms" />
     </form>
   )
 }

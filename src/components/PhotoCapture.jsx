@@ -32,8 +32,10 @@ export default function PhotoCapture({
   // and confirm before it gets replaced.
   existingId = null,
   confirmReplace = false,
-  previewHeight = 'h-44' // shorter previews keep long forms scrollable
+  previewHeight = 'h-44', // shorter previews keep long forms scrollable
+  language = 'en'
 }) {
+  const ms = language === 'ms'
   const inputRef = useRef(null)
   const [busy, setBusy] = useState(false)
   const [detecting, setDetecting] = useState(false)
@@ -49,7 +51,7 @@ export default function PhotoCapture({
 
   // Ask before overwriting a photo that is already on the record.
   const pickFile = () => {
-    if (confirmReplace && !value && saved && !window.confirm('Replace this photo?')) return
+    if (confirmReplace && !value && saved && !window.confirm(ms ? 'Ganti gambar ini?' : 'Replace this photo?')) return
     inputRef.current?.click()
   }
   const tokenRef = useRef(0) // invalidates a stale in-flight detection
@@ -120,7 +122,7 @@ export default function PhotoCapture({
       }
     } catch (err) {
       console.error('Photo capture failed', err)
-      alert('Could not read that photo. Please try again.')
+      alert(ms ? 'Gambar gagal dibaca. Cuba lagi.' : 'Could not read that photo. Please try again.')
       if (token === tokenRef.current) setBusy(false)
     }
   }
@@ -128,9 +130,9 @@ export default function PhotoCapture({
   const gpsOk = value?.gps && value.gps.lat != null
   const sourceLabel =
     value?.gps?.source === GpsSource.EXIF
-      ? 'from photo'
+      ? ms ? 'daripada gambar' : 'from photo'
       : value?.gps?.source === GpsSource.DEVICE
-        ? 'from device'
+        ? ms ? 'daripada telefon' : 'from device'
         : null
 
   // Compact square tile — used for the optional 3-up photo box on the admin forms.
@@ -162,7 +164,7 @@ export default function PhotoCapture({
                 type="button"
                 onClick={clear}
                 className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-sm leading-none text-white"
-                aria-label="Remove photo"
+                aria-label={ms ? 'Buang gambar' : 'Remove photo'}
               >
                 ×
               </button>
@@ -172,11 +174,11 @@ export default function PhotoCapture({
               onClick={pickFile}
               className="absolute inset-x-0 bottom-0 bg-black/50 py-0.5 text-center text-[10px] text-white"
             >
-              {label || 'Change'}
+              {label || (ms ? 'Tukar' : 'Change')}
             </button>
           </div>
         )}
-        <Lightbox url={zoom} onClose={() => setZoom(null)} />
+        <Lightbox url={zoom} onClose={() => setZoom(null)} language={language} />
       </div>
     )
   }
@@ -197,7 +199,7 @@ export default function PhotoCapture({
           {busy ? (
             <div className="flex flex-col items-center gap-2 py-6 text-slate-500">
               <Spinner />
-              <span className="text-sm">Reading photo & location…</span>
+              <span className="text-sm">{ms ? 'Membaca gambar…' : 'Reading photo & location…'}</span>
             </div>
           ) : (
             <button
@@ -206,8 +208,8 @@ export default function PhotoCapture({
               className="flex w-full flex-col items-center gap-1 rounded-xl bg-brand py-5 text-white active:bg-brand-dark"
             >
               <IconCamera width={28} height={28} />
-              <span className="text-base font-medium">Take photo</span>
-              <span className="text-[11px] text-white/80">Camera or upload from phone</span>
+              <span className="text-base font-medium">{ms ? 'Ambil gambar' : 'Take photo'}</span>
+              <span className="text-[11px] text-white/80">{ms ? 'Kamera atau galeri' : 'Camera or upload from phone'}</span>
             </button>
           )}
           {hint && <p className="mt-2 text-center text-xs text-slate-500">{hint}</p>}
@@ -231,9 +233,9 @@ export default function PhotoCapture({
             {detectTime && (
               <div className="flex items-center gap-2 text-slate-600">
                 <IconClock width={15} height={15} className="text-slate-500" />
-                <span>{dateTimeSecondsOf(value.capturedAt)}</span>
+                <span>{dateTimeSecondsOf(value.capturedAt, ms ? 'ms-MY' : undefined)}</span>
                 {value.timeSource === GpsSource.DEVICE && (
-                  <span className="text-[11px] text-amber-600">(device time)</span>
+                  <span className="text-[11px] text-amber-600">({ms ? 'masa telefon' : 'device time'})</span>
                 )}
               </div>
             )}
@@ -241,21 +243,21 @@ export default function PhotoCapture({
               <>
                 <div className="flex items-center gap-2 text-slate-600">
                   <IconPin width={15} height={15} className={gpsOk ? 'text-slate-500' : 'text-red-400'} />
-                  <span className={gpsOk ? '' : 'text-red-500'}>{formatGps(value.gps)}</span>
+                  <span className={gpsOk ? '' : 'text-red-500'}>{gpsOk ? formatGps(value.gps) : ms ? 'Tiada lokasi' : formatGps(value.gps)}</span>
                   {sourceLabel && <span className="text-[11px] text-slate-500">({sourceLabel})</span>}
                 </div>
                 {!gpsOk && (
                   <p className="text-[11px] text-red-500">
-                    No location found. Allow location access, or upload a photo that has GPS.
+                    {ms ? 'Lokasi tiada. Benarkan akses lokasi.' : 'No location found. Allow location access, or upload a photo that has GPS.'}
                   </p>
                 )}
               </>
             )}
             {detecting && (
-              <p className="text-[11px] text-slate-500">Reading date &amp; location…</p>
+              <p className="text-[11px] text-slate-500">{ms ? 'Membaca tarikh dan lokasi…' : 'Reading date & location…'}</p>
             )}
             {value.blob?.size != null && (
-              <p className="text-[11px] text-slate-500">Upload size ≈ {formatBytes(value.blob.size)}</p>
+              <p className="text-[11px] text-slate-500">{ms ? 'Saiz' : 'Upload size'} ≈ {formatBytes(value.blob.size)}</p>
             )}
           </div>
           <div className="flex border-t border-slate-100">
@@ -264,7 +266,7 @@ export default function PhotoCapture({
               onClick={() => inputRef.current?.click()}
               className="flex-1 py-2.5 text-sm font-medium text-brand active:bg-brand-light"
             >
-              Change photo
+              {ms ? 'Tukar gambar' : 'Change photo'}
             </button>
             <div className="w-px bg-slate-100" />
             <button
@@ -272,13 +274,13 @@ export default function PhotoCapture({
               onClick={clear}
               className="flex-1 py-2.5 text-sm font-medium text-red-500 active:bg-red-50"
             >
-              Remove
+              {ms ? 'Buang' : 'Remove'}
             </button>
           </div>
         </div>
       )}
 
-      <Lightbox url={zoom} onClose={() => setZoom(null)} />
+      <Lightbox url={zoom} onClose={() => setZoom(null)} language={language} />
     </div>
   )
 }
