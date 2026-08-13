@@ -148,6 +148,7 @@ async function run() {
     await processTombstones()
     await pullPresets()
     await pullTasksAndPhotos()
+    await purgeSoftDeletedTracks()
     const at = new Date().toISOString()
     await setMeta('lastSyncAt', at)
     setState({ lastSyncAt: at })
@@ -278,6 +279,17 @@ async function processTombstones() {
         // server-side soft-delete marker.
         const { error } = await supabase.from(tbl('tracks')).delete().eq('id', t.serverId)
         if (error) throw error
+      } else if (t.table === 'tasks' && t.serverId) {
+        // A task may have tracks uploaded by another device that are not in
+        // this device's IndexedDB. Delete by task_id as well as processing any
+        // per-track tombstones created locally, so no server track is orphaned.
+        const tracksResult = await supabase.from(tbl('tracks')).delete().eq('task_id', t.serverId)
+        if (tracksResult.error) throw tracksResult.error
+        const taskResult = await supabase
+          .from(tbl('tasks'))
+          .update({ deleted: true, updated_at: now })
+          .eq('id', t.serverId)
+        if (taskResult.error) throw taskResult.error
       } else if (t.serverId) {
         // Soft-delete (mark deleted + bump updated_at) rather than a hard delete, so
         // the removal reaches other devices through the normal pull.
@@ -290,6 +302,15 @@ async function processTombstones() {
     }
   }
   if (failed) scheduleRetry() // come back sooner to finish the stragglers
+}
+
+// Older app builds soft-deleted tracks. Pull runs first so this device applies
+// those deletion markers locally; only then remove the legacy rows (and their
+// GPS geometry) permanently from Supabase. New builds hard-delete tracks in
+// processTombstones(), so this is normally a no-op.
+async function purgeSoftDeletedTracks() {
+  const { error } = await supabase.from(tbl('tracks')).delete().eq('deleted', true)
+  if (error) throw error
 }
 
 // ---- pull ----------------------------------------------------------------
