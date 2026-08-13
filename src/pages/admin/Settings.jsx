@@ -306,7 +306,8 @@ function BoundarySection({ company }) {
       <h2 className="font-semibold text-slate-800">Boundary</h2>
       <p className="mb-2 mt-0.5 text-xs text-slate-500">
         Upload a KML or GPX outline of this company’s site. It shows on every map — for operators and
-        admins — behind the recorded paths.
+        admins — behind the recorded paths. After a device syncs it once, the boundary stays available
+        on that device offline.
       </p>
 
       <input ref={fileRef} type="file" accept=".kml,.gpx,application/vnd.google-earth.kml+xml,application/gpx+xml,text/xml" hidden onChange={onFile} />

@@ -271,6 +271,13 @@ async function processTombstones() {
           const { error } = await supabase.from(tbl('photos')).update({ deleted: true, updated_at: now }).eq('id', t.serverId)
           if (error) throw error
         }
+      } else if (t.table === 'tracks' && t.serverId) {
+        // Track deletions are permanent: removing either one recording or its
+        // parent task must also remove the GPS geometry from Supabase. Unlike
+        // the other synced entities, tracks intentionally do not retain a
+        // server-side soft-delete marker.
+        const { error } = await supabase.from(tbl('tracks')).delete().eq('id', t.serverId)
+        if (error) throw error
       } else if (t.serverId) {
         // Soft-delete (mark deleted + bump updated_at) rather than a hard delete, so
         // the removal reaches other devices through the normal pull.

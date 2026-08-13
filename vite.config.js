@@ -49,7 +49,28 @@ export default defineConfig(({ mode }) => ({
         cleanupOutdatedCaches: true,
         navigateFallback: 'index.html',
         // Never let the SW intercept Supabase API/storage calls.
-        navigateFallbackDenylist: [/^\/api/, /supabase\.co/]
+        navigateFallbackDenylist: [/^\/api/, /supabase\.co/],
+        runtimeCaching: [
+          {
+            // Keep recently viewed satellite tiles available for a later
+            // offline visit. This is deliberately bounded: it is a working-area
+            // cache, not a promise that the whole basemap is downloaded.
+            urlPattern: ({ url, request }) =>
+              request.destination === 'image' &&
+              url.origin === 'https://server.arcgisonline.com' &&
+              url.pathname.startsWith('/ArcGIS/rest/services/World_Imagery/MapServer/tile/'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'satellite-map-tiles-v1',
+              cacheableResponse: { statuses: [0, 200] },
+              expiration: {
+                maxEntries: 600,
+                maxAgeSeconds: 60 * 24 * 60 * 60,
+                purgeOnQuotaError: true
+              }
+            }
+          }
+        ]
       },
       devOptions: {
         // Enable the service worker in `npm run dev` so offline can be tested locally.

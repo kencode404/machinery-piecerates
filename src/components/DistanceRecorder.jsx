@@ -37,7 +37,8 @@ const timeOnly = (iso) =>
  * distance is reported to the parent (which locks it into the task quantity).
  * This month's earlier recordings are drawn underneath and exportable KML/GPX.
  *
- * Recording works offline (GPS needs no network) — only the imagery tiles do.
+ * Recording and boundaries work offline. Satellite imagery is cached on demand,
+ * so previously viewed tiles can also reappear without a connection.
  */
 export default function DistanceRecorder({
   open,
@@ -78,6 +79,7 @@ export default function DistanceRecorder({
   const centered = useRef(false)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [online, setOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine))
   // Format chooser target: null = closed, 'month' = all of this month's tracks,
   // or a single track object (exported from its detail panel).
   const [exportTarget, setExportTarget] = useState(null)
@@ -140,6 +142,17 @@ export default function DistanceRecorder({
     () => (monthTracks || []).reduce((s, t) => s + (Number(t.distanceMeters) || 0), 0),
     [monthTracks]
   )
+
+  useEffect(() => {
+    const wentOnline = () => setOnline(true)
+    const wentOffline = () => setOnline(false)
+    window.addEventListener('online', wentOnline)
+    window.addEventListener('offline', wentOffline)
+    return () => {
+      window.removeEventListener('online', wentOnline)
+      window.removeEventListener('offline', wentOffline)
+    }
+  }, [])
 
   // Create the map when the overlay opens, destroy it when it closes.
   useEffect(() => {
@@ -766,6 +779,15 @@ export default function DistanceRecorder({
       <span className="absolute left-1 top-1 z-[1000] rounded bg-black/40 px-1.5 py-0.5 text-[9px] text-white/60">
         {SAT_ATTRIB}
       </span>
+
+      {!online && (
+        <p
+          role="status"
+          className="absolute left-2 top-7 z-[1000] max-w-[70%] rounded-lg bg-amber-950/85 px-2.5 py-1.5 text-xs font-medium leading-tight text-amber-50 shadow"
+        >
+          Offline · {boundary ? 'boundary saved' : 'saved tracks available'} · cached imagery only
+        </p>
+      )}
 
       {/* HQ admin: start drawing a path (sits above the compass) */}
       {readOnly && canDraw && drawTarget && !drawing && (
