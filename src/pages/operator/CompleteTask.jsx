@@ -194,10 +194,6 @@ export default function CompleteTask() {
     () => (taskTracks || []).map((t) => Math.round((Number(t.distanceMeters) || 0) * 10) / 10).join('+'),
     [taskTracks]
   )
-  // Paths recorded for this task, but the chosen job isn't measured in metres —
-  // e.g. the operator switched to Kerja jam afterwards. The paths stay (only
-  // they can decide whether to delete them), but they must not drive quantity.
-  const tracksMismatch = !rateIsMeters && trackTotal > 0
   const wasLocked = useRef(false)
   useEffect(() => {
     if (qtyLocked) {
@@ -455,9 +451,10 @@ export default function CompleteTask() {
             )}
           </Field>
 
-          {/* GPS distance recorder — for metre work, and still reachable when
-              paths exist under a non-metre job so they can be reviewed/deleted */}
-          {(rateIsMeters || tracksMismatch) && (
+          {/* GPS distance recorder — distance work only. Paths left over from a
+              switched-away job are cleaned up on completion, so there's nothing
+              to reach here. */}
+          {rateIsMeters && (
             <button
               type="button"
               onClick={() => {
