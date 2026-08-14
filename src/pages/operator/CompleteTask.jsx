@@ -603,6 +603,12 @@ export default function CompleteTask() {
             taskId={id}
             pieceRate={rate}
             boundary={company?.boundary || null}
+            // The operator may remove a path from THIS job only (it's still
+            // unfinished); earlier jobs' paths stay untouchable.
+            canDelete
+            deletableTaskId={id}
+            deleteLabel="Padam"
+            deleteConfirm="Padam rekod jarak {d} ini? Kuantiti akan dikemas kini."
             onSaved={() => {}}
             language="ms"
           />

@@ -58,6 +58,11 @@ export default function DistanceRecorder({
   // may delete one. Operators get neither.
   canDraw = false,
   canDelete = false,
+  // When set, deletion is limited to paths of that task — an operator may only
+  // remove paths from the job they're finishing, not earlier ones.
+  deletableTaskId = null,
+  deleteLabel = 'Delete',
+  deleteConfirm = null, // full confirm text; falls back to English below
   canEditRecorded = false, // HQ admin may also reshape a GPS recording
   editedBy = null, // role stamped on a reshaped recording (monthly map has no drawTarget)
   focus = null, // [lat, lng] to open on when there are no paths/boundary to frame
@@ -587,7 +592,8 @@ export default function DistanceRecorder({
 
   async function removeSelected() {
     if (!selected) return
-    if (!window.confirm(`Delete this ${fmtM(selected.distanceMeters)} path? The quantity updates everywhere.`)) return
+    const ask = deleteConfirm || `Delete this ${fmtM(selected.distanceMeters)} path? The quantity updates everywhere.`
+    if (!window.confirm(ask.replace('{d}', fmtM(selected.distanceMeters)))) return
     setSaving(true)
     try {
       await deleteTrack(selected.id)
@@ -948,14 +954,14 @@ export default function DistanceRecorder({
                       Edit
                     </button>
                   )}
-                  {canDelete && (
+                  {canDelete && (!deletableTaskId || selected.taskId === deletableTaskId) && (
                     <button
                       type="button"
                       onClick={removeSelected}
                       disabled={saving}
                       className="rounded-md bg-red-500/80 px-2 py-1 text-[11px] font-medium text-white active:bg-red-500 disabled:opacity-50"
                     >
-                      Delete
+                      {deleteLabel}
                     </button>
                   )}
                 </div>
