@@ -26,6 +26,14 @@ export function isDistanceUnit(unit) {
   return DISTANCE_UNITS.has(norm(unit).toLowerCase())
 }
 
+// Day-based work ("Hari") is only ever a half day or a full day, so its
+// quantity is picked from a list instead of typed.
+const DAY_UNITS = new Set(['hari', 'day', 'days', 'hari kerja'])
+export const DAY_QTY_CHOICES = ['0.5', '1']
+export function isDayUnit(unit) {
+  return DAY_UNITS.has(norm(unit).toLowerCase())
+}
+
 const PALETTE = ['#2563eb', '#16a34a', '#d97706', '#db2777', '#7c3aed', '#0891b2', '#dc2626', '#65a30d', '#9333ea', '#0d9488']
 export const colorFor = (i) => PALETTE[i % PALETTE.length]
 

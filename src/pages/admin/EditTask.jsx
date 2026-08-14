@@ -27,6 +27,7 @@ import PageHeader from '../../components/PageHeader.jsx'
 import PhotoCapture from '../../components/PhotoCapture.jsx'
 import { Button, Card, Field, NumberInput, TextInput, TextArea, Select, Spinner, Badge } from '../../components/ui.jsx'
 import { QuantityInput } from '../../components/QuantityInput.jsx'
+import { isDayUnit, DAY_QTY_CHOICES } from '../../lib/dashboard.js'
 import { evalExpr, isExpression } from '../../lib/expr.js'
 import { IconTrash, IconLock, IconWarning } from '../../components/icons.jsx'
 
@@ -499,9 +500,25 @@ export default function EditTask() {
 
         <Field
           label={`Quantity${rate ? ` (${rate.unit})` : ''}`}
-          hint={qtyLocked ? 'Measured by GPS — tap to see the sum' : 'A number or a sum like 5+5+10-6'}
+          hint={
+            qtyLocked
+              ? 'Measured by GPS — tap to see the sum'
+              : rate && isDayUnit(rate.unit)
+                ? 'Half day or full day'
+                : 'A number or a sum like 5+5+10-6'
+          }
         >
-          {qtyLocked ? (
+          {rate && isDayUnit(rate.unit) && !qtyLocked ? (
+            // Day work is only ever half a day or a whole day.
+            <Select value={f.quantity} onChange={set('quantity')}>
+              <option value="">Choose…</option>
+              {DAY_QTY_CHOICES.map((v) => (
+                <option key={v} value={v}>
+                  {v} hari
+                </option>
+              ))}
+            </Select>
+          ) : qtyLocked ? (
             // Excel-cell style: total, tap to reveal the recordings' sum. Not
             // editable — the value belongs to the GPS recordings.
             <button

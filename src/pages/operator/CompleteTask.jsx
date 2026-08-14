@@ -16,7 +16,7 @@ import {
   kerjaJamRate,
   listTaskTracks
 } from '../../db/repo.js'
-import { isDistanceUnit } from '../../lib/dashboard.js'
+import { isDistanceUnit, isDayUnit, DAY_QTY_CHOICES } from '../../lib/dashboard.js'
 
 // Code-split: Leaflet only loads when an operator actually opens the map.
 const DistanceRecorder = lazy(() => import('../../components/DistanceRecorder.jsx'))
@@ -473,9 +473,25 @@ export default function CompleteTask() {
 
           <Field
             label={`Kuantiti${rate ? ` (${rate.unit})` : ''}`}
-            hint={qtyLocked ? 'Daripada peta · tekan untuk jumlah' : 'Pilihan · contoh 5+5+10'}
+            hint={
+              qtyLocked
+                ? 'Daripada peta · tekan untuk jumlah'
+                : rate && isDayUnit(rate.unit)
+                  ? 'Setengah hari atau satu hari'
+                  : 'Pilihan · contoh 5+5+10'
+            }
           >
-            {qtyLocked ? (
+            {rate && isDayUnit(rate.unit) && !qtyLocked ? (
+              // Kerja harian hanya 1/2 hari atau 1 hari — pilih, bukan taip.
+              <Select value={quantity} onChange={(e) => setQuantity(e.target.value)}>
+                <option value="">Pilih…</option>
+                {DAY_QTY_CHOICES.map((v) => (
+                  <option key={v} value={v}>
+                    {v} hari
+                  </option>
+                ))}
+              </Select>
+            ) : qtyLocked ? (
               // Excel-cell behaviour, read-only: shows the total; tap to reveal
               // the sum formula (e.g. "320+150"); tap again for the total.
               <button

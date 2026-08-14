@@ -18,6 +18,7 @@ import PageHeader from '../../components/PageHeader.jsx'
 import PhotoCapture from '../../components/PhotoCapture.jsx'
 import { Button, Card, Field, NumberInput, TextInput, TextArea, Select } from '../../components/ui.jsx'
 import { QuantityInput } from '../../components/QuantityInput.jsx'
+import { isDayUnit, DAY_QTY_CHOICES } from '../../lib/dashboard.js'
 import { evalExpr, isExpression } from '../../lib/expr.js'
 import { IconWarning } from '../../components/icons.jsx'
 
@@ -363,8 +364,23 @@ export default function AddTask() {
             ))}
           </Select>
         </Field>
-        <Field label={`Quantity${rate ? ` (${rate.unit})` : ''}`} hint="Optional — a number or a sum like 5+5+10-6">
-          <QuantityInput value={f.quantity} onChange={(v) => setF((p) => ({ ...p, quantity: v }))} />
+        <Field
+          label={`Quantity${rate ? ` (${rate.unit})` : ''}`}
+          hint={rate && isDayUnit(rate.unit) ? 'Half day or full day' : 'Optional — a number or a sum like 5+5+10-6'}
+        >
+          {rate && isDayUnit(rate.unit) ? (
+            // Day work is only ever half a day or a whole day.
+            <Select value={f.quantity} onChange={set('quantity')}>
+              <option value="">Choose…</option>
+              {DAY_QTY_CHOICES.map((v) => (
+                <option key={v} value={v}>
+                  {v} hari
+                </option>
+              ))}
+            </Select>
+          ) : (
+            <QuantityInput value={f.quantity} onChange={(v) => setF((p) => ({ ...p, quantity: v }))} />
+          )}
         </Field>
         <Field label="Area">
           <Select value={f.areaId} onChange={set('areaId')}>
