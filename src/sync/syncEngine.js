@@ -338,33 +338,59 @@ async function processTombstones() {
  * Cheap: ids only, and this app has a handful of tracks per operator per month.
  * Rows still waiting to upload are kept — they don't exist on the server yet.
  */
+let lastReconcileAt = 0
+const RECONCILE_EVERY_MS = 5 * 60_000 // deletions are rare; no need every run
+
 async function reconcileTracks() {
-  const { data, error } = await supabase.from(tbl('tracks')).select('id').limit(10000)
-  if (error) throw error
-  const onServer = new Set((data || []).map((r) => r.id))
-  const local = await db.tracks.toArray()
-  for (const t of local) {
-    if (t.syncStatus === SyncStatus.PENDING) continue // not pushed yet
-    if (!onServer.has(t.id)) await db.tracks.delete(t.id)
+  if (Date.now() - lastReconcileAt < RECONCILE_EVERY_MS) return
+  const local = (await db.tracks.toArray()).filter((t) => t.syncStatus !== SyncStatus.PENDING)
+  lastReconcileAt = Date.now()
+  if (!local.length) return
+  // Ask about the ids THIS device holds, in batches — not "list every track",
+  // which grew with the whole history and, past its row cap, would have started
+  // reporting live tracks as missing and deleting them locally.
+  const alive = new Set()
+  for (let i = 0; i < local.length; i += 100) {
+    const ids = local.slice(i, i + 100).map((t) => t.id)
+    const { data, error } = await supabase.from(tbl('tracks')).select('id').in('id', ids)
+    if (error) throw error
+    for (const r of data || []) alive.add(r.id)
   }
+  for (const t of local) if (!alive.has(t.id)) await db.tracks.delete(t.id)
 }
 
 // ---- pull ----------------------------------------------------------------
 
+const PRESET_TABLES = [
+  ['companies', () => db.companies, fromServerCompany],
+  ['machines', () => db.machines, fromServerMachine],
+  ['operators', () => db.operators, fromServerOperator],
+  ['piece_rates', () => db.pieceRates, fromServerPieceRate],
+  ['areas', () => db.areas, fromServerArea],
+  ['claims', () => db.claims, fromServerClaim],
+  ['month_locks', () => db.monthLocks, fromServerMonthLock],
+  ['tracks', () => db.tracks, fromServerTrack]
+]
+
+/**
+ * Fetch every preset table at once, then apply them one after another.
+ *
+ * Run in sequence these were eight round trips of pure latency — noticeable on
+ * a weak site connection even when nothing had changed. The requests are
+ * independent, so they overlap; the local writes stay sequential so IndexedDB
+ * work doesn't interleave. Nothing is skipped, so data is exactly as fresh.
+ */
 async function pullPresets() {
-  await pullTable('companies', db.companies, fromServerCompany)
-  await pullTable('machines', db.machines, fromServerMachine)
-  await pullTable('operators', db.operators, fromServerOperator)
-  await pullTable('piece_rates', db.pieceRates, fromServerPieceRate)
-  await pullTable('areas', db.areas, fromServerArea)
-  await pullTable('claims', db.claims, fromServerClaim)
-  await pullTable('month_locks', db.monthLocks, fromServerMonthLock)
-  await pullTable('tracks', db.tracks, fromServerTrack)
+  const fetched = await Promise.all(PRESET_TABLES.map(([name]) => fetchTable(name)))
+  for (let i = 0; i < PRESET_TABLES.length; i++) {
+    const [name, table, mapper] = PRESET_TABLES[i]
+    await applyTable(name, table(), mapper, fetched[i])
+  }
 }
 
-async function pullTable(serverTable, dexieTable, mapper) {
-  const cursorKey = `cursor.${serverTable}`
-  const cursor = (await getMeta(cursorKey)) || EPOCH
+/** One table's changed rows since our cursor (network only — no local writes). */
+async function fetchTable(serverTable) {
+  const cursor = (await getMeta(`cursor.${serverTable}`)) || EPOCH
   const { data, error } = await supabase
     .from(tbl(serverTable))
     .select('*')
@@ -372,6 +398,15 @@ async function pullTable(serverTable, dexieTable, mapper) {
     .order('updated_at', { ascending: true })
     .limit(1000)
   if (error) throw error
+  return { cursor, data }
+}
+
+async function pullTable(serverTable, dexieTable, mapper) {
+  await applyTable(serverTable, dexieTable, mapper, await fetchTable(serverTable))
+}
+
+async function applyTable(serverTable, dexieTable, mapper, { cursor, data }) {
+  const cursorKey = `cursor.${serverTable}`
   let maxCursor = cursor
   for (const row of data || []) {
     const local = mapper(row)
@@ -388,16 +423,12 @@ async function pullTable(serverTable, dexieTable, mapper) {
 }
 
 async function pullTasksAndPhotos() {
+  // Both requests go out together, then are applied in order (tasks first —
+  // photos reference them).
+  const [tasksRes, photosRes] = await Promise.all([fetchTable('tasks'), fetchTable('photos')])
   // Tasks
   {
-    const cursor = (await getMeta('cursor.tasks')) || EPOCH
-    const { data, error } = await supabase
-      .from(tbl('tasks'))
-      .select('*')
-      .gt('updated_at', cursor)
-      .order('updated_at', { ascending: true })
-      .limit(1000)
-    if (error) throw error
+    const { cursor, data } = tasksRes
     let maxCursor = cursor
     for (const row of data || []) {
       if (row.updated_at > maxCursor) maxCursor = row.updated_at
@@ -413,14 +444,7 @@ async function pullTasksAndPhotos() {
   }
   // Photos (metadata only; bytes stay in Storage and load on demand)
   {
-    const cursor = (await getMeta('cursor.photos')) || EPOCH
-    const { data, error } = await supabase
-      .from(tbl('photos'))
-      .select('*')
-      .gt('updated_at', cursor)
-      .order('updated_at', { ascending: true })
-      .limit(1000)
-    if (error) throw error
+    const { cursor, data } = photosRes
     let maxCursor = cursor
     for (const row of data || []) {
       if (row.updated_at > maxCursor) maxCursor = row.updated_at
