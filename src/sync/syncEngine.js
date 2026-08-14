@@ -148,7 +148,7 @@ async function run() {
     await processTombstones()
     await pullPresets()
     await pullTasksAndPhotos()
-    await purgeSoftDeletedTracks()
+    await reconcileTracks()
     const at = new Date().toISOString()
     await setMeta('lastSyncAt', at)
     setState({ lastSyncAt: at })
@@ -308,9 +308,25 @@ async function processTombstones() {
 // those deletion markers locally; only then remove the legacy rows (and their
 // GPS geometry) permanently from Supabase. New builds hard-delete tracks in
 // processTombstones(), so this is normally a no-op.
-async function purgeSoftDeletedTracks() {
-  const { error } = await supabase.from(tbl('tracks')).delete().eq('deleted', true)
+/**
+ * Tracks are deleted from Supabase outright (no soft-delete marker), which the
+ * cursor-based pull can't see — a row that no longer exists simply never comes
+ * back in a `updated_at > cursor` query. So after pulling we compare local
+ * tracks against the server's id list and drop any that are gone, which is how
+ * an admin's deletion reaches the operator's device.
+ *
+ * Cheap: ids only, and this app has a handful of tracks per operator per month.
+ * Rows still waiting to upload are kept — they don't exist on the server yet.
+ */
+async function reconcileTracks() {
+  const { data, error } = await supabase.from(tbl('tracks')).select('id').limit(10000)
   if (error) throw error
+  const onServer = new Set((data || []).map((r) => r.id))
+  const local = await db.tracks.toArray()
+  for (const t of local) {
+    if (t.syncStatus === SyncStatus.PENDING) continue // not pushed yet
+    if (!onServer.has(t.id)) await db.tracks.delete(t.id)
+  }
 }
 
 // ---- pull ----------------------------------------------------------------
