@@ -171,8 +171,11 @@ async function refreshPending() {
   try {
     // Count whole tasks waiting to upload (open or finished) — not photos — so
     // the badge reads "N tasks to sync", one per job.
-    const [pendingTasks, c, m, o, r, a, cl, lk, tr, tomb] = await Promise.all([
+    const [pendingTasks, ph, c, m, o, r, a, cl, lk, tr, tomb] = await Promise.all([
       db.tasks.where('syncStatus').equals(SyncStatus.PENDING).count(),
+      // Photos with local bytes still to upload. Counted (not as "tasks") so a
+      // stuck photo can't leave the chip claiming everything is synced.
+      db.photos.where('syncStatus').equals(SyncStatus.PENDING).count(),
       db.companies.where('syncStatus').equals(SyncStatus.PENDING).count(),
       db.machines.where('syncStatus').equals(SyncStatus.PENDING).count(),
       db.operators.where('syncStatus').equals(SyncStatus.PENDING).count(),
@@ -183,7 +186,7 @@ async function refreshPending() {
       db.tracks.where('syncStatus').equals(SyncStatus.PENDING).count(),
       db.tombstones.count()
     ])
-    const other = c + m + o + r + a + cl + lk + tr + tomb // admin setting changes / deletions / tracks
+    const other = ph + c + m + o + r + a + cl + lk + tr + tomb // photos / settings / deletions / tracks
     setState({ pending: pendingTasks + other, pendingTasks })
   } catch {
     /* ignore */
@@ -192,27 +195,44 @@ async function refreshPending() {
 
 // ---- push ----------------------------------------------------------------
 
+// A weak site connection can leave a request hanging for minutes. Give up and
+// let the next cycle retry rather than stalling the whole run behind it.
+const UPLOAD_TIMEOUT_MS = 60_000
+const withTimeout = (promise, ms) =>
+  Promise.race([promise, new Promise((_, rej) => setTimeout(() => rej(new Error('Upload timed out')), ms))])
+
 async function pushPhotos() {
   const pending = await db.photos.where('syncStatus').equals(SyncStatus.PENDING).toArray()
+  let failed = 0
   for (const p of pending) {
     if (!p.blob) {
       // Pulled-from-server placeholder with no local bytes — nothing to upload.
       if (p.storagePath) await markSynced(db.photos, p.id, p.updatedAt)
       continue
     }
-    const path = p.storagePath || `${p.taskId}/${p.id}.jpg`
-    const up = await supabase.storage
-      .from(PHOTO_BUCKET)
-      .upload(path, p.blob, { upsert: true, contentType: p.blob.type || 'image/jpeg' })
-    if (up.error) throw up.error
-    const { error } = await supabase.from(tbl('photos')).upsert(toServerPhoto(p, path))
-    if (error) throw error
-    // Only finalise if the row hasn't changed underneath us.
-    const cur = await db.photos.get(p.id)
-    if (cur && cur.updatedAt === p.updatedAt) {
-      await db.photos.update(p.id, { storagePath: path, syncStatus: SyncStatus.SYNCED })
+    // Each photo is independent: one that won't upload (bad signal, oversized,
+    // server hiccup) must not hold back the others — or the rest of the run,
+    // which is where deletions and incoming records happen. It stays pending
+    // with its bytes intact and is retried on the next cycle.
+    try {
+      const path = p.storagePath || `${p.taskId}/${p.id}.jpg`
+      const up = await withTimeout(
+        supabase.storage.from(PHOTO_BUCKET).upload(path, p.blob, { upsert: true, contentType: p.blob.type || 'image/jpeg' }),
+        UPLOAD_TIMEOUT_MS
+      )
+      if (up.error) throw up.error
+      const { error } = await supabase.from(tbl('photos')).upsert(toServerPhoto(p, path))
+      if (error) throw error
+      // Only finalise if the row hasn't changed underneath us.
+      const cur = await db.photos.get(p.id)
+      if (cur && cur.updatedAt === p.updatedAt) {
+        await db.photos.update(p.id, { storagePath: path, syncStatus: SyncStatus.SYNCED })
+      }
+    } catch {
+      failed++
     }
   }
+  if (failed) scheduleRetry() // come back sooner to finish the stragglers
 }
 
 async function pushTasks() {

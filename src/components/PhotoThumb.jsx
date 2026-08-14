@@ -9,22 +9,24 @@ import { publicPhotoUrl } from '../sync/supabase.js'
  */
 export function usePhotoUrl(photo) {
   const [url, setUrl] = useState(null)
+  // Key the effect on the source we actually use, not on every field. Local
+  // bytes win, so the sync engine writing `storagePath` after an upload no
+  // longer tears down and rebuilds a perfectly good blob URL (which made the
+  // thumbnail blink through its empty state while a task was uploading).
+  const src = photo?.blob || photo?.storagePath || null
   useEffect(() => {
-    if (!photo) {
+    if (!src) {
       setUrl(null)
       return
     }
-    if (photo.blob) {
-      const u = URL.createObjectURL(photo.blob)
-      setUrl(u)
-      return () => URL.revokeObjectURL(u)
-    }
-    if (photo.storagePath) {
-      setUrl(publicPhotoUrl(photo.storagePath))
+    if (typeof src === 'string') {
+      setUrl(publicPhotoUrl(src))
       return
     }
-    setUrl(null)
-  }, [photo?.blob, photo?.storagePath])
+    const u = URL.createObjectURL(src)
+    setUrl(u)
+    return () => URL.revokeObjectURL(u)
+  }, [src])
   return url
 }
 
@@ -33,9 +35,13 @@ export function PhotoThumb({ photo, className = '', onZoom, language = 'en' }) {
   const url = usePhotoUrl(photo)
   if (!photo) return null
   if (!url) {
+    // The photo has bytes (or a stored file) and the URL is a tick away — show
+    // a plain placeholder. "No image" is only the truth when there's no source
+    // at all, otherwise it reads as an error on a photo that's perfectly fine.
+    const resolving = !!(photo.blob || photo.storagePath)
     return (
       <div className={`flex items-center justify-center rounded-lg bg-slate-100 text-[10px] text-slate-500 ${className}`}>
-        {ms ? 'Tiada gambar' : 'No image'}
+        {resolving ? '' : ms ? 'Tiada gambar' : 'No image'}
       </div>
     )
   }
