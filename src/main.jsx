@@ -1,5 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import { registerSW } from 'virtual:pwa-register'
 // HashRouter (URLs like /#/open) so deep links never 404 on GitHub Pages,
 // which has no SPA server fallback. Invisible once installed as a PWA.
 import { HashRouter } from 'react-router-dom'
@@ -9,6 +10,14 @@ import { AuthProvider } from './auth/AuthContext.jsx'
 import { seedIfEmpty } from './db/database.js'
 import { startSync } from './sync/syncEngine.js'
 import { purgeOldData, cleanupMachineHourlyRates, repairKerjaJamTasks } from './db/repo.js'
+
+// `autoUpdate` activates a newly deployed service worker immediately. Register
+// through the plugin's client helper so it also reloads this page when that new
+// worker takes control; otherwise an already-open app can keep references to
+// old lazy chunks (such as the map) after the old precache has been removed.
+registerSW({
+  onRegisterError: (error) => console.error('Service worker registration failed', error)
+})
 
 // Seed first-run defaults, remove any leftover machine-level "Kerja jam" rate
 // from an earlier build, repair tasks that stored the Kerja jam sentinel id,
