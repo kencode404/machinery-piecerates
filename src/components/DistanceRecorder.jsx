@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { TrackRecorder, MAX_ACCURACY_M, trackDistance } from '../lib/geotrack.js'
+import { TrackRecorder, MAX_ACCURACY_M, START_ACCURACY_M, trackDistance } from '../lib/geotrack.js'
 import { addTrack, listTracks, deleteTrack, updateTrackPoints } from '../db/repo.js'
 import { monthKeyOf, monthLabel } from '../lib/format.js'
 import { tracksToKML, tracksToGPX, downloadFile } from '../lib/geotrack.js'
@@ -728,9 +728,17 @@ export default function DistanceRecorder({
   const exportMeters = exportList.reduce((s, t) => s + (Number(t.distanceMeters) || 0), 0)
   // Gate Start on a fix at least as tight as what the recorder will accept —
   // otherwise the first points would be silently rejected anyway.
-  const gpsReady = fix?.accuracy != null && fix.accuracy <= MAX_ACCURACY_M
+  const gpsReady = fix?.accuracy != null && fix.accuracy <= START_ACCURACY_M
   const accNow = rec.running ? rec.lastFix?.accuracy : fix?.accuracy
-  const accColor = accNow == null ? 'text-white/60' : accNow <= 10 ? 'text-green-300' : accNow <= MAX_ACCURACY_M ? 'text-amber-300' : 'text-red-300'
+  // Green = ready to start, amber = usable while running, red = ignored.
+  const accColor =
+    accNow == null
+      ? 'text-white/60'
+      : accNow <= START_ACCURACY_M
+        ? 'text-green-300'
+        : accNow <= MAX_ACCURACY_M
+          ? 'text-amber-300'
+          : 'text-red-300'
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black">

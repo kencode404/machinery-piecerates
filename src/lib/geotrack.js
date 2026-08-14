@@ -34,6 +34,11 @@ export function trackDistance(points) {
 // and the adaptive floor below only counts steps larger than a fraction of the
 // reported error. Precision sharpens automatically as the fix tightens.
 export const MAX_ACCURACY_M = 50
+// Starting demands a tighter fix than recording does. A real satellite lock
+// reaches well under this outdoors within seconds, so it proves the phone isn't
+// falling back to Wi-Fi/cell positioning. Once moving, a looser fix is still
+// better than skipping it — a skipped stretch is filled by a straight line.
+export const START_ACCURACY_M = 30
 const MIN_STEP_M = 2.5 // ignore jitter below this step
 const MIN_SPEED_MS = 0.3 // below this the machine is considered stationary
 const MAX_SPEED_MS = 40 // ignore impossible jumps (>144 km/h)
@@ -129,7 +134,14 @@ export class TrackRecorder {
     // Accuracy-weighted smoothing: a tight fix (≤8 m) moves the smoothed
     // position fully; a loose one is damped. Floor of 0.35 keeps the dot/line
     // responsive — heavier damping made the track feel choppy and laggy.
-    const w = accuracy != null ? Math.min(Math.max(8 / accuracy, 0.35), 1) : 0.5
+    let w = accuracy != null ? Math.min(Math.max(8 / accuracy, 0.35), 1) : 0.5
+    // ...but damping must not swallow real movement. When the raw fix has moved
+    // clearly further than the error radius, that's travel rather than scatter,
+    // so follow it almost exactly. Without this the smoothed point trails on
+    // pulling away from a standstill and those first metres are lost for good.
+    // Math.max, never a plain assignment: at a tight fix w is already 1 (no
+    // damping at all) and forcing 0.9 would make fast, accurate travel worse.
+    if (this._ema && haversine(this._ema, { lat, lng }) > Math.max(accuracy ?? 0, 4)) w = Math.max(w, 0.9)
     const s = this._ema
       ? { lat: this._ema.lat + (lat - this._ema.lat) * w, lng: this._ema.lng + (lng - this._ema.lng) * w }
       : { lat, lng }
@@ -161,7 +173,9 @@ export class TrackRecorder {
       //    in big chunks and feel choppy.
       const d = haversine(this._anchor, s)
       const adt = Math.max((t - this._anchor.t) / 1000, 0.001)
-      const minStep = Math.max(MIN_STEP_M, (accuracy ?? 0) * 0.25)
+      // Capped: at a loose fix the old rule demanded a big step before anything
+      // counted, so walking pace registered nothing for the first several metres.
+      const minStep = Math.min(Math.max(MIN_STEP_M, (accuracy ?? 0) * 0.25), 6)
       if (d >= minStep && d / adt <= MAX_SPEED_MS) {
         this.distance += d
         this._anchor = { ...s, t }
