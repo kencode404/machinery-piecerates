@@ -931,12 +931,13 @@ export default function DistanceRecorder({
                   {fmtM(selected.distanceMeters)}
                 </span>
               </div>
-              <div className="flex items-center justify-between gap-2">
-                <p className="whitespace-nowrap text-[11px] text-white/70">
-                  {dateOnly(selected.endedAt || selected.startedAt, ms ? 'ms-MY' : undefined)} · {ms ? 'masa' : 'time'}:{' '}
-                  {timeOnly(selected.endedAt || selected.startedAt, ms ? 'ms-MY' : undefined)}
-                </p>
-                <div className="flex shrink-0 gap-1.5">
+              <p className="truncate text-[11px] text-white/70">
+                {dateOnly(selected.endedAt || selected.startedAt, ms ? 'ms-MY' : undefined)} · {ms ? 'masa' : 'time'}:{' '}
+                {timeOnly(selected.endedAt || selected.startedAt, ms ? 'ms-MY' : undefined)}
+              </p>
+              {/* Buttons on their own row — the date line plus two or three
+                  buttons overflowed the panel on a phone. */}
+              <div className="mt-1.5 flex flex-wrap justify-end gap-1.5">
                   <button
                     type="button"
                     onClick={() => setExportTarget((v) => (v === selected ? null : selected))}
@@ -964,7 +965,6 @@ export default function DistanceRecorder({
                       {deleteLabel}
                     </button>
                   )}
-                </div>
               </div>
               {/* Audit row: who drew it, or that a recording was reshaped */}
               {selected.manual ? (
