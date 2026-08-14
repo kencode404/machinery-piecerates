@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext.jsx'
 import { useSync } from '../sync/useSync.js'
+import { requestSync } from '../sync/syncEngine.js'
 import { IconList, IconChart, IconCog, IconLogout, IconCloud, IconCloudOff, IconReport } from './icons.jsx'
 
 const OPERATOR_NAV = [
@@ -77,62 +78,56 @@ export function SyncStatus({ language = 'en' }) {
   const ms = language === 'ms'
   const tasksLabel = ms ? `${pendingTasks} kerja belum segerak` : `${pendingTasks} ${pendingTasks === 1 ? 'task' : 'tasks'} to sync`
 
+  // One chip, styled by the current state.
+  let tone = 'bg-green-100 text-green-700'
+  let icon = <IconCloud width={14} height={14} />
+  let text = ms ? 'Sudah sync' : 'Synced'
   if (!enabled) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-500">
-        {ms ? 'Mod luar talian' : 'Offline mode'}
-      </span>
-    )
+    tone = 'bg-slate-100 text-slate-500'
+    icon = null
+    text = ms ? 'Mod luar talian' : 'Offline mode'
+  } else if (!online) {
+    tone = 'bg-amber-100 text-amber-700'
+    icon = <IconCloudOff width={14} height={14} />
+    text = pendingTasks > 0 ? tasksLabel : ms ? 'Luar talian' : 'Offline'
+  } else if (syncing) {
+    tone = 'bg-brand-light text-brand-dark'
+    icon = <IconCloud width={14} height={14} className="animate-pulse" />
+    text = ms ? 'Sedang sync…' : 'Syncing…'
+  } else if (lastError) {
+    tone = 'bg-red-100 text-red-700'
+    icon = null
+    text = ms ? 'Ralat segerak' : 'Sync error'
+  } else if (pendingTasks > 0) {
+    tone = 'bg-amber-100 text-amber-700'
+    icon = null
+    text = tasksLabel
+  } else if (pending > 0) {
+    // Only admin setting changes / deletions left to push.
+    tone = 'bg-amber-100 text-amber-700'
+    icon = null
+    text = ms ? 'Menyimpan…' : 'Saving changes…'
   }
 
-  if (!online) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs text-amber-700">
-        <IconCloudOff width={14} height={14} />
-        {pendingTasks > 0 ? tasksLabel : ms ? 'Luar talian' : 'Offline'}
-      </span>
-    )
-  }
+  const chip = `inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs ${tone}`
 
-  if (syncing) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-brand-light px-2.5 py-1 text-xs text-brand-dark">
-        <IconCloud width={14} height={14} className="animate-pulse" />
-        {ms ? 'Sedang sync…' : 'Syncing…'}
-      </span>
-    )
-  }
+  // Local-only build has nothing to sync with — leave it as a plain label.
+  if (!enabled) return <span className={chip}>{text}</span>
 
-  if (lastError) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-1 text-xs text-red-700">
-        {ms ? 'Ralat segerak' : 'Sync error'}
-      </span>
-    )
-  }
-
-  if (pendingTasks > 0) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs text-amber-700">
-        {tasksLabel}
-      </span>
-    )
-  }
-
-  // Only admin setting changes / deletions left to push.
-  if (pending > 0) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs text-amber-700">
-        {ms ? 'Menyimpan…' : 'Saving changes…'}
-      </span>
-    )
-  }
-
+  // Otherwise the chip is a button: tap it to sync right now instead of waiting
+  // for the next poll (useful after reconnecting, or to confirm a push landed).
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-1 text-xs text-green-700">
-      <IconCloud width={14} height={14} />
-      {ms ? 'Sudah sync' : 'Synced'}
-    </span>
+    <button
+      type="button"
+      onClick={() => requestSync()}
+      disabled={syncing}
+      title={ms ? 'Tekan untuk segerak sekarang' : 'Tap to sync now'}
+      aria-label={ms ? 'Segerak sekarang' : 'Sync now'}
+      className={`${chip} active:opacity-70 disabled:opacity-100`}
+    >
+      {icon}
+      {text}
+    </button>
   )
 }
 

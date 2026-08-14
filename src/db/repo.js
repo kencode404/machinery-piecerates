@@ -15,6 +15,7 @@ import {
 } from './models.js'
 import { uuid } from '../lib/uuid.js'
 import { dayKeyOf, monthKeyOf, minRetainedMonthKey } from '../lib/format.js'
+import { isDistanceUnit } from '../lib/dashboard.js'
 import { minutesBetween } from '../lib/duration.js'
 import { hashSecret } from '../lib/crypto.js'
 import { emitChange } from '../sync/bus.js'
@@ -176,7 +177,7 @@ export async function completeTask(taskId, { endTime, endWorkPhoto, endPhoto, ma
     updatedAt: now
   }
 
-  await db.transaction('rw', db.tasks, db.photos, async () => {
+  await db.transaction('rw', db.tasks, db.photos, db.tracks, db.tombstones, async () => {
     await db.tasks.update(taskId, patch)
     if (endWorkPhoto && endWorkPhotoId) {
       const existing = await db.photos.get(endWorkPhotoId)
@@ -189,6 +190,16 @@ export async function completeTask(taskId, { endTime, endWorkPhoto, endPhoto, ma
       const row = buildPhoto(endPhotoId, taskId, PhotoKind.END_MILEAGE, endPhoto)
       if (existing) await db.photos.put({ ...existing, ...row })
       else await db.photos.add(row)
+    }
+    // Finished as work that isn't measured in distance? Any paths recorded
+    // earlier belong to a job that was abandoned — drop them (tombstoned, so
+    // they're removed from Supabase too) instead of leaving them on the maps.
+    if (patch.unit && !isDistanceUnit(patch.unit)) {
+      const strays = await db.tracks.where('taskId').equals(taskId).toArray()
+      for (const tr of strays) {
+        await db.tombstones.put({ id: uuid(), table: 'tracks', serverId: tr.id, createdAt: now })
+        await db.tracks.delete(tr.id)
+      }
     }
   })
   emitChange()
@@ -730,6 +741,10 @@ export async function syncTaskQuantityFromTracks(taskId) {
   if (!taskId) return
   const task = await db.tasks.get(taskId)
   if (!task) return
+  // Only distance work takes its quantity from the paths. If the job was
+  // switched to hours/days, leave the typed quantity alone — metres must never
+  // overwrite a quantity that is counted in another unit.
+  if (task.unit && !isDistanceUnit(task.unit)) return
   const rows = (await db.tracks.where('taskId').equals(taskId).toArray()).sort((a, b) =>
     (a.startedAt || '').localeCompare(b.startedAt || '')
   )
