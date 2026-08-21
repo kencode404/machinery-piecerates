@@ -24,8 +24,8 @@ export default defineConfig(({ mode }) => ({
       registerType: 'autoUpdate',
       includeAssets: ['apple-touch-icon.png', 'favicon-32x32.png'],
       manifest: {
-        name: 'Machinery Piece Rates',
-        short_name: 'PieceRates',
+        name: 'MachTrek',
+        short_name: 'MachTrek',
         description: 'Record heavy-machine work, offline-first.',
         theme_color: '#ffffff',
         background_color: '#ffffff',

@@ -857,7 +857,7 @@ function AboutSection() {
   const lastSyncAt = useLiveQuery(() => getMeta('lastSyncAt', null), [], null)
   return (
     <Card className="p-4">
-      <p className="text-sm text-slate-500">Machinery Piece Rates · v{import.meta.env.VITE_APP_VERSION}</p>
+      <p className="text-sm text-slate-500">MachTrek · v{import.meta.env.VITE_APP_VERSION}</p>
       <p className="text-sm text-slate-500">
         Last successful sync: {lastSyncAt ? new Date(lastSyncAt).toLocaleString() : 'never'}
       </p>

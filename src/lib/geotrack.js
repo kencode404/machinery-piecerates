@@ -277,7 +277,7 @@ ${pts}
     })
     .join('\n')
   return `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="Machinery Piece Rates" xmlns="http://www.topografix.com/GPX/1/1">
+<gpx version="1.1" creator="MachTrek" xmlns="http://www.topografix.com/GPX/1/1">
   <metadata><name>${esc(docName)}</name></metadata>
 ${trks}
 </gpx>`
