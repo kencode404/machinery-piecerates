@@ -282,126 +282,134 @@ export default function AddTask() {
         </Field>
       </Card>
 
-      {/* Duration */}
-      <Card className="mt-4 space-y-4 p-4">
-        <div>
-          <p className="mb-1.5 text-sm font-medium text-slate-700">How is the duration set?</p>
-          <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
-            {DUR_MODES.map(([val, label]) => (
-              <button
-                key={val}
-                type="button"
-                onClick={() => setF((p) => ({ ...p, durMode: val }))}
-                className={`rounded-lg py-2 text-sm font-medium transition-colors ${
-                  f.durMode === val ? 'bg-white text-brand shadow-sm' : 'text-slate-500'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+      {/* Duration and Work are two sub-sections of one group, so the manual
+          entry form does not read as four unrelated cards in a row. */}
+      <section className="mt-4 rounded-2xl border border-slate-200 bg-slate-100 p-2">
+        <div className="px-2 pb-2 pt-1">
+          <h2 className="text-sm font-semibold text-slate-800">Work details</h2>
+          <p className="text-xs text-slate-500">Duration and the piece rate for this record.</p>
         </div>
-
-        {f.durMode === 'time' && (
-          <>
-            <Field label="Start time" required>
-              <TextInput type="datetime-local" step="1" value={f.startTime} onChange={set('startTime')} />
-            </Field>
-            <Field label="Start location" hint="Optional · latitude, longitude">
-              <TextInput value={f.startLoc} onChange={set('startLoc')} placeholder="e.g. 3.13921, 101.6869" />
-            </Field>
-            <Field label="End time">
-              <TextInput type="datetime-local" step="1" value={f.endTime} onChange={set('endTime')} />
-            </Field>
-            <Field label="End location" hint="Optional · latitude, longitude">
-              <TextInput value={f.endLoc} onChange={set('endLoc')} placeholder="e.g. 3.13921, 101.6869" />
-            </Field>
-          </>
-        )}
-
-        {f.durMode === 'meter' && (
-          <>
-            <Field label="Tarikh kerja" required>
-              <TextInput type="date" value={f.date} onChange={set('date')} />
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Start meter (hrs)" required>
-                <NumberInput value={f.startMeter} onChange={set('startMeter')} placeholder="e.g. 1240.5" />
-              </Field>
-              <Field label="End meter (hrs)" required>
-                <NumberInput value={f.endMeter} onChange={set('endMeter')} placeholder="e.g. 1243.0" />
-              </Field>
+        <Card className="space-y-4 p-4">
+          <h3 className="text-sm font-semibold text-slate-800">Duration</h3>
+          <div>
+            <p className="mb-1.5 text-sm font-medium text-slate-700">How is the duration set?</p>
+            <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
+              {DUR_MODES.map(([val, label]) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => setF((p) => ({ ...p, durMode: val }))}
+                  className={`rounded-lg py-2 text-sm font-medium transition-colors ${
+                    f.durMode === val ? 'bg-white text-brand shadow-sm' : 'text-slate-500'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
-          </>
-        )}
+          </div>
 
-        {f.durMode === 'hours' && (
-          <>
-            <Field label="Tarikh kerja" required>
-              <TextInput type="date" value={f.date} onChange={set('date')} />
-            </Field>
-            <Field label="Jam bekerja" required hint="To 1 decimal, e.g. 2.5">
-              <NumberInput value={f.hours} onChange={set('hours')} placeholder="e.g. 2.5" step="0.1" />
-            </Field>
-          </>
-        )}
+          {f.durMode === 'time' && (
+            <>
+              <Field label="Start time" required>
+                <TextInput type="datetime-local" step="1" value={f.startTime} onChange={set('startTime')} />
+              </Field>
+              <Field label="Start location" hint="Optional · latitude, longitude">
+                <TextInput value={f.startLoc} onChange={set('startLoc')} placeholder="e.g. 3.13921, 101.6869" />
+              </Field>
+              <Field label="End time">
+                <TextInput type="datetime-local" step="1" value={f.endTime} onChange={set('endTime')} />
+              </Field>
+              <Field label="End location" hint="Optional · latitude, longitude">
+                <TextInput value={f.endLoc} onChange={set('endLoc')} placeholder="e.g. 3.13921, 101.6869" />
+              </Field>
+            </>
+          )}
 
-        <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
-          <span className="text-slate-500">Duration (auto)</span>
-          <span className="font-semibold text-slate-800">{durationMins == null ? '—' : formatHours(durationMins)}</span>
-        </div>
-      </Card>
+          {f.durMode === 'meter' && (
+            <>
+              <Field label="Tarikh kerja" required>
+                <TextInput type="date" value={f.date} onChange={set('date')} />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Start meter (hrs)" required>
+                  <NumberInput value={f.startMeter} onChange={set('startMeter')} placeholder="e.g. 1240.5" />
+                </Field>
+                <Field label="End meter (hrs)" required>
+                  <NumberInput value={f.endMeter} onChange={set('endMeter')} placeholder="e.g. 1243.0" />
+                </Field>
+              </div>
+            </>
+          )}
 
-      {/* Work */}
-      <Card className="mt-4 space-y-4 p-4">
-        <Field label="Piece rate work" hint={f.machineId ? 'Optional' : 'Choose a machine first'}>
-          <Select value={f.rateId} onChange={set('rateId')} disabled={!f.machineId}>
-            <option value="">{f.machineId ? 'Choose work type…' : 'Pick a machine first'}</option>
-            {rateOptions.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name} — {formatRate(r.price, currency)}/{r.unit}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field
-          label={`Quantity${rate ? ` (${rate.unit})` : ''}`}
-          hint={rate && isDayUnit(rate.unit) ? 'Half day or full day' : 'Optional — a number or a sum like 5+5+10-6'}
-        >
-          {rate && isDayUnit(rate.unit) ? (
-            // Day work is only ever half a day or a whole day.
-            <Select value={f.quantity} onChange={set('quantity')}>
-              <option value="">Choose…</option>
-              {DAY_QTY_CHOICES.map((v) => (
-                <option key={v} value={v}>
-                  {v} hari
+          {f.durMode === 'hours' && (
+            <>
+              <Field label="Tarikh kerja" required>
+                <TextInput type="date" value={f.date} onChange={set('date')} />
+              </Field>
+              <Field label="Jam bekerja" required hint="To 1 decimal, e.g. 2.5">
+                <NumberInput value={f.hours} onChange={set('hours')} placeholder="e.g. 2.5" step="0.1" />
+              </Field>
+            </>
+          )}
+
+          <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
+            <span className="text-slate-500">Duration (auto)</span>
+            <span className="font-semibold text-slate-800">{durationMins == null ? '—' : formatHours(durationMins)}</span>
+          </div>
+        </Card>
+
+        <Card className="mt-2 space-y-4 p-4">
+          <h3 className="text-sm font-semibold text-slate-800">Work & rate</h3>
+          <Field label="Piece rate work" hint={f.machineId ? 'Optional' : 'Choose a machine first'}>
+            <Select value={f.rateId} onChange={set('rateId')} disabled={!f.machineId}>
+              <option value="">{f.machineId ? 'Choose work type…' : 'Pick a machine first'}</option>
+              {rateOptions.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name} — {formatRate(r.price, currency)}/{r.unit}
                 </option>
               ))}
             </Select>
-          ) : (
-            <QuantityInput value={f.quantity} onChange={(v) => setF((p) => ({ ...p, quantity: v }))} />
+          </Field>
+          <Field
+            label={`Quantity${rate ? ` (${rate.unit})` : ''}`}
+            hint={rate && isDayUnit(rate.unit) ? 'Half day or full day' : 'Optional — a number or a sum like 5+5+10-6'}
+          >
+            {rate && isDayUnit(rate.unit) ? (
+              // Day work is only ever half a day or a whole day.
+              <Select value={f.quantity} onChange={set('quantity')}>
+                <option value="">Choose…</option>
+                {DAY_QTY_CHOICES.map((v) => (
+                  <option key={v} value={v}>
+                    {v} hari
+                  </option>
+                ))}
+              </Select>
+            ) : (
+              <QuantityInput value={f.quantity} onChange={(v) => setF((p) => ({ ...p, quantity: v }))} />
+            )}
+          </Field>
+          <Field label="Area">
+            <Select value={f.areaId} onChange={set('areaId')}>
+              <option value="">Choose area…</option>
+              {(areas || []).map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Notes (optional)">
+            <TextArea value={f.notes} onChange={set('notes')} />
+          </Field>
+          {amount != null && (
+            <div className="flex items-center justify-between rounded-lg bg-brand-light px-3 py-2">
+              <span className="text-sm text-brand-dark">Amount</span>
+              <span className="font-bold text-brand-dark">{formatMoney(amount, currency)}</span>
+            </div>
           )}
-        </Field>
-        <Field label="Area">
-          <Select value={f.areaId} onChange={set('areaId')}>
-            <option value="">Choose area…</option>
-            {(areas || []).map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Notes (optional)">
-          <TextArea value={f.notes} onChange={set('notes')} />
-        </Field>
-        {amount != null && (
-          <div className="flex items-center justify-between rounded-lg bg-brand-light px-3 py-2">
-            <span className="text-sm text-brand-dark">Amount</span>
-            <span className="font-bold text-brand-dark">{formatMoney(amount, currency)}</span>
-          </div>
-        )}
-      </Card>
+        </Card>
+      </section>
 
       {/* Optional photos — small compact 3-up box */}
       <Card className="mt-4 p-4">

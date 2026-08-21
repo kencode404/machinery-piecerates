@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { getPhoto } from '../db/repo.js'
 import { publicPhotoUrl } from '../sync/supabase.js'
@@ -9,24 +9,44 @@ import { publicPhotoUrl } from '../sync/supabase.js'
  */
 export function usePhotoUrl(photo) {
   const [url, setUrl] = useState(null)
-  // Key the effect on the source we actually use, not on every field. Local
-  // bytes win, so the sync engine writing `storagePath` after an upload no
-  // longer tears down and rebuilds a perfectly good blob URL (which made the
-  // thumbnail blink through its empty state while a task was uploading).
-  const src = photo?.blob || photo?.storagePath || null
+  const blob = photo?.blob ?? null
+  const storagePath = photo?.storagePath ?? null
+
+  // Local bytes win over the stored copy. The effect is keyed on the photo's
+  // IDENTITY, never on the Blob instance: Dexie's liveQuery deserialises a
+  // fresh Blob on every emission, and the sync engine rewrites this row twice
+  // in the seconds after a save (once to record the storage path, once when
+  // the pull echoes the row back). Keying on the instance revoked an object
+  // URL the <img> was still loading, which is what broke the meter thumbnail
+  // when an operator opened a task straight after "Mula kerja".
+  //
+  // A freshly captured photo has no id yet, so fall back to the Blob itself
+  // there — those are never rewritten by sync, and retaking a photo must still
+  // rebuild the preview.
+  const key = blob ? (photo.id ?? blob) : storagePath ? `path:${storagePath}` : null
+
+  // Read through a ref so a new Blob instance for the same photo doesn't
+  // re-run the effect, while the effect still gets the current bytes.
+  const blobRef = useRef(null)
+  blobRef.current = blob
+
   useEffect(() => {
-    if (!src) {
+    if (!key) {
       setUrl(null)
-      return
+      return undefined
     }
-    if (typeof src === 'string') {
-      setUrl(publicPhotoUrl(src))
-      return
+    const bytes = blobRef.current
+    if (!bytes) {
+      setUrl(publicPhotoUrl(storagePath))
+      return undefined
     }
-    const u = URL.createObjectURL(src)
+    const u = URL.createObjectURL(bytes)
     setUrl(u)
     return () => URL.revokeObjectURL(u)
-  }, [src])
+    // `storagePath` is encoded in `key`; `blobRef` is intentionally not a dep.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key])
+
   return url
 }
 

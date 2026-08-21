@@ -393,166 +393,174 @@ export default function EditTask() {
         </Field>
       </Card>
 
-      <p className="mb-1 mt-4 px-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Duration</p>
-      <Card className="space-y-4 p-4">
-        <div>
-          <p className="mb-1.5 text-sm font-medium text-slate-700">How is the duration set?</p>
-          <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
-            {DUR_MODES.map(([val, label]) => (
-              <button
-                key={val}
-                type="button"
-                onClick={() => setF((p) => ({ ...p, durMode: val }))}
-                className={`rounded-lg py-2 text-sm font-medium transition-colors ${
-                  f.durMode === val ? 'bg-white text-brand shadow-sm' : 'text-slate-500'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
+      {/* Duration and Work are two sub-sections of one group, matching the
+          Add work form. */}
+      <section className="mt-4 rounded-2xl border border-slate-200 bg-slate-100 p-2">
+        <div className="px-2 pb-2 pt-1">
+          <h2 className="text-sm font-semibold text-slate-800">Work details</h2>
+          <p className="text-xs text-slate-500">Duration and the piece rate for this record.</p>
+        </div>
+        <Card className="space-y-4 p-4">
+          <h3 className="text-sm font-semibold text-slate-800">Duration</h3>
+          <div>
+            <p className="mb-1.5 text-sm font-medium text-slate-700">How is the duration set?</p>
+            <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
+              {DUR_MODES.map(([val, label]) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => setF((p) => ({ ...p, durMode: val }))}
+                  className={`rounded-lg py-2 text-sm font-medium transition-colors ${
+                    f.durMode === val ? 'bg-white text-brand shadow-sm' : 'text-slate-500'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
 
-        {f.durMode === 'time' && (
-          <>
-            <Field label="Start time">
-              <TextInput type="datetime-local" step="1" value={f.startTime} onChange={set('startTime')} />
-            </Field>
-            <Field label="Start location" hint="Optional · latitude, longitude">
-              <TextInput value={f.startLoc} onChange={set('startLoc')} placeholder="e.g. 3.13921, 101.6869" />
-            </Field>
-            <Field label="End time">
-              <TextInput type="datetime-local" step="1" value={f.endTime} onChange={set('endTime')} />
-            </Field>
-            <Field label="End location" hint="Optional · latitude, longitude">
-              <TextInput value={f.endLoc} onChange={set('endLoc')} placeholder="e.g. 3.13921, 101.6869" />
-            </Field>
-          </>
-        )}
-
-        {f.durMode === 'meter' && (
-          <>
-            <Field label="Tarikh kerja">
-              <TextInput type="date" value={f.date} onChange={set('date')} />
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Start meter (hrs)">
-                <NumberInput value={f.startMeter} onChange={set('startMeter')} placeholder="e.g. 1240.5" />
+          {f.durMode === 'time' && (
+            <>
+              <Field label="Start time">
+                <TextInput type="datetime-local" step="1" value={f.startTime} onChange={set('startTime')} />
               </Field>
-              <Field label="End meter (hrs)">
-                <NumberInput value={f.endMeter} onChange={set('endMeter')} placeholder="e.g. 1243.0" />
+              <Field label="Start location" hint="Optional · latitude, longitude">
+                <TextInput value={f.startLoc} onChange={set('startLoc')} placeholder="e.g. 3.13921, 101.6869" />
               </Field>
-            </div>
-          </>
-        )}
+              <Field label="End time">
+                <TextInput type="datetime-local" step="1" value={f.endTime} onChange={set('endTime')} />
+              </Field>
+              <Field label="End location" hint="Optional · latitude, longitude">
+                <TextInput value={f.endLoc} onChange={set('endLoc')} placeholder="e.g. 3.13921, 101.6869" />
+              </Field>
+            </>
+          )}
 
-        {f.durMode === 'hours' && (
-          <>
-            <Field label="Tarikh kerja">
-              <TextInput type="date" value={f.date} onChange={set('date')} />
-            </Field>
-            <Field label="Jam bekerja" hint="To 1 decimal, e.g. 2.5">
-              <NumberInput value={f.hours} onChange={set('hours')} placeholder="e.g. 2.5" step="0.1" />
-            </Field>
-          </>
-        )}
+          {f.durMode === 'meter' && (
+            <>
+              <Field label="Tarikh kerja">
+                <TextInput type="date" value={f.date} onChange={set('date')} />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Start meter (hrs)">
+                  <NumberInput value={f.startMeter} onChange={set('startMeter')} placeholder="e.g. 1240.5" />
+                </Field>
+                <Field label="End meter (hrs)">
+                  <NumberInput value={f.endMeter} onChange={set('endMeter')} placeholder="e.g. 1243.0" />
+                </Field>
+              </div>
+            </>
+          )}
 
-        <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
-          <span className="text-slate-500">Duration (auto)</span>
-          <span className="font-semibold text-slate-800">{formatHours(durationMins)}</span>
-        </div>
-      </Card>
+          {f.durMode === 'hours' && (
+            <>
+              <Field label="Tarikh kerja">
+                <TextInput type="date" value={f.date} onChange={set('date')} />
+              </Field>
+              <Field label="Jam bekerja" hint="To 1 decimal, e.g. 2.5">
+                <NumberInput value={f.hours} onChange={set('hours')} placeholder="e.g. 2.5" step="0.1" />
+              </Field>
+            </>
+          )}
 
-      <p className="mb-1 mt-4 px-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Work</p>
-      <Card className="space-y-4 p-4">
-        <Field label="Piece rate" hint={f.machineId ? undefined : 'Choose a machine first'}>
-          <Select value={f.rateId} onChange={set('rateId')} disabled={!f.machineId}>
-            <option value="">None</option>
-            {rateOptions.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name} — {formatRate(r.price, currency)}/{r.unit}
-                {r.active ? '' : ' (inactive)'}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        {/* Paths for this task. Also shown when there are none yet, so a manager
-            can open the map and draw the first one. */}
-        {((taskTracks || []).length > 0 || !locked) && (
-          <button
-            type="button"
-            onClick={() => setMapOpen(true)}
-            className="flex w-full items-center justify-between rounded-xl border border-brand/40 bg-brand-light/50 px-3 py-3 text-left active:bg-brand-light"
-          >
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-brand-dark">GPS distance recording</p>
-              <p className="text-xs text-slate-600">
-                {(taskTracks || []).length > 0
-                  ? `${taskTracks.length} recording${taskTracks.length === 1 ? '' : 's'} · ${trackTotal.toLocaleString()} m measured`
-                  : 'No paths yet — open the map to draw one'}
-              </p>
-            </div>
-            <span className="shrink-0 rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white">
-              {(taskTracks || []).length > 0 ? 'View map' : 'Open map'}
-            </span>
-          </button>
-        )}
+          <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
+            <span className="text-slate-500">Duration (auto)</span>
+            <span className="font-semibold text-slate-800">{formatHours(durationMins)}</span>
+          </div>
+        </Card>
 
-        <Field
-          label={`Quantity${rate ? ` (${rate.unit})` : ''}`}
-          hint={
-            qtyLocked
-              ? 'Measured by GPS — tap to see the sum'
-              : rate && isDayUnit(rate.unit)
-                ? 'Half day or full day'
-                : 'A number or a sum like 5+5+10-6'
-          }
-        >
-          {rate && isDayUnit(rate.unit) && !qtyLocked ? (
-            // Day work is only ever half a day or a whole day.
-            <Select value={f.quantity} onChange={set('quantity')}>
-              <option value="">Choose…</option>
-              {DAY_QTY_CHOICES.map((v) => (
-                <option key={v} value={v}>
-                  {v} hari
+        <Card className="mt-2 space-y-4 p-4">
+          <h3 className="text-sm font-semibold text-slate-800">Work & rate</h3>
+          <Field label="Piece rate" hint={f.machineId ? undefined : 'Choose a machine first'}>
+            <Select value={f.rateId} onChange={set('rateId')} disabled={!f.machineId}>
+              <option value="">None</option>
+              {rateOptions.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name} — {formatRate(r.price, currency)}/{r.unit}
+                  {r.active ? '' : ' (inactive)'}
                 </option>
               ))}
             </Select>
-          ) : qtyLocked ? (
-            // Excel-cell style: total, tap to reveal the recordings' sum. Not
-            // editable — the value belongs to the GPS recordings.
+          </Field>
+          {/* Paths for this task. Also shown when there are none yet, so a manager
+              can open the map and draw the first one. */}
+          {((taskTracks || []).length > 0 || !locked) && (
             <button
               type="button"
-              onClick={() => setShowQtyFormula((v) => !v)}
-              className="flex h-12 w-full items-center rounded-xl border border-slate-300 bg-slate-100 px-3.5 text-left font-semibold text-slate-800"
+              onClick={() => setMapOpen(true)}
+              className="flex w-full items-center justify-between rounded-xl border border-brand/40 bg-brand-light/50 px-3 py-3 text-left active:bg-brand-light"
             >
-              {showQtyFormula ? trackExpr : `${trackTotal.toLocaleString()} m`}
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-brand-dark">GPS distance recording</p>
+                <p className="text-xs text-slate-600">
+                  {(taskTracks || []).length > 0
+                    ? `${taskTracks.length} recording${taskTracks.length === 1 ? '' : 's'} · ${trackTotal.toLocaleString()} m measured`
+                    : 'No paths yet — open the map to draw one'}
+                </p>
+              </div>
+              <span className="shrink-0 rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white">
+                {(taskTracks || []).length > 0 ? 'View map' : 'Open map'}
+              </span>
             </button>
-          ) : (
-            <QuantityInput value={f.quantity} onChange={(v) => setF((p) => ({ ...p, quantity: v }))} />
           )}
-        </Field>
-        <Field label="Area">
-          <Select value={f.areaId} onChange={set('areaId')}>
-            <option value="">None</option>
-            {(areas || []).map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-                {a.active ? '' : ' (inactive)'}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Notes">
-          <TextArea value={f.notes} onChange={set('notes')} />
-        </Field>
-        {amount != null && (
-          <div className="flex items-center justify-between rounded-lg bg-brand-light px-3 py-2">
-            <span className="text-sm text-brand-dark">Amount</span>
-            <span className="font-bold text-brand-dark">{formatMoney(amount, currency)}</span>
-          </div>
-        )}
-      </Card>
+
+          <Field
+            label={`Quantity${rate ? ` (${rate.unit})` : ''}`}
+            hint={
+              qtyLocked
+                ? 'Measured by GPS — tap to see the sum'
+                : rate && isDayUnit(rate.unit)
+                  ? 'Half day or full day'
+                  : 'A number or a sum like 5+5+10-6'
+            }
+          >
+            {rate && isDayUnit(rate.unit) && !qtyLocked ? (
+              // Day work is only ever half a day or a whole day.
+              <Select value={f.quantity} onChange={set('quantity')}>
+                <option value="">Choose…</option>
+                {DAY_QTY_CHOICES.map((v) => (
+                  <option key={v} value={v}>
+                    {v} hari
+                  </option>
+                ))}
+              </Select>
+            ) : qtyLocked ? (
+              // Excel-cell style: total, tap to reveal the recordings' sum. Not
+              // editable — the value belongs to the GPS recordings.
+              <button
+                type="button"
+                onClick={() => setShowQtyFormula((v) => !v)}
+                className="flex h-12 w-full items-center rounded-xl border border-slate-300 bg-slate-100 px-3.5 text-left font-semibold text-slate-800"
+              >
+                {showQtyFormula ? trackExpr : `${trackTotal.toLocaleString()} m`}
+              </button>
+            ) : (
+              <QuantityInput value={f.quantity} onChange={(v) => setF((p) => ({ ...p, quantity: v }))} />
+            )}
+          </Field>
+          <Field label="Area">
+            <Select value={f.areaId} onChange={set('areaId')}>
+              <option value="">None</option>
+              {(areas || []).map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                  {a.active ? '' : ' (inactive)'}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Notes">
+            <TextArea value={f.notes} onChange={set('notes')} />
+          </Field>
+          {amount != null && (
+            <div className="flex items-center justify-between rounded-lg bg-brand-light px-3 py-2">
+              <span className="text-sm text-brand-dark">Amount</span>
+              <span className="font-bold text-brand-dark">{formatMoney(amount, currency)}</span>
+            </div>
+          )}
+        </Card>
+      </section>
 
       {/* One photo section: tiles show what's on the record; tap the caption to
           replace (with a confirm), tap the image to view it full screen. */}
